@@ -8,19 +8,33 @@ package mlx
 #include <string.h>
 #include <mlx/c/error.h>
 
-static pthread_mutex_t mlxgo_error_mu = PTHREAD_MUTEX_INITIALIZER;
-static char* mlxgo_last_error = NULL;
+static pthread_key_t mlxgo_error_key;
+static pthread_once_t mlxgo_error_key_once = PTHREAD_ONCE_INIT;
+
+static void mlxgo_free_thread_error(void* ptr) {
+	free(ptr);
+}
+
+static void mlxgo_make_error_key(void) {
+	(void)pthread_key_create(&mlxgo_error_key, mlxgo_free_thread_error);
+}
+
+static void mlxgo_set_thread_error(const char* msg) {
+	pthread_once(&mlxgo_error_key_once, mlxgo_make_error_key);
+
+	char* old = (char*)pthread_getspecific(mlxgo_error_key);
+	free(old);
+
+	char* next = NULL;
+	if (msg != NULL) {
+		next = strdup(msg);
+	}
+	(void)pthread_setspecific(mlxgo_error_key, next);
+}
 
 static void mlxgo_error_handler(const char* msg, void* data) {
 	(void)data;
-
-	pthread_mutex_lock(&mlxgo_error_mu);
-	free(mlxgo_last_error);
-	mlxgo_last_error = NULL;
-	if (msg != NULL) {
-		mlxgo_last_error = strdup(msg);
-	}
-	pthread_mutex_unlock(&mlxgo_error_mu);
+	mlxgo_set_thread_error(msg);
 }
 
 static void mlxgo_install_error_handler(void) {
@@ -28,17 +42,14 @@ static void mlxgo_install_error_handler(void) {
 }
 
 static void mlxgo_clear_last_error(void) {
-	pthread_mutex_lock(&mlxgo_error_mu);
-	free(mlxgo_last_error);
-	mlxgo_last_error = NULL;
-	pthread_mutex_unlock(&mlxgo_error_mu);
+	mlxgo_set_thread_error(NULL);
 }
 
 static char* mlxgo_take_last_error(void) {
-	pthread_mutex_lock(&mlxgo_error_mu);
-	char* msg = mlxgo_last_error;
-	mlxgo_last_error = NULL;
-	pthread_mutex_unlock(&mlxgo_error_mu);
+	pthread_once(&mlxgo_error_key_once, mlxgo_make_error_key);
+
+	char* msg = (char*)pthread_getspecific(mlxgo_error_key);
+	(void)pthread_setspecific(mlxgo_error_key, NULL);
 	return msg;
 }
 */

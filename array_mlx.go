@@ -13,6 +13,7 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -47,11 +48,10 @@ const (
 	DeviceCPU
 )
 
-var defaultStreamState = struct {
+var defaultDeviceState = struct {
 	sync.Mutex
 	deviceType DeviceType
 	index      int
-	stream     C.mlx_stream
 }{
 	deviceType: DeviceGPU,
 	index:      0,
@@ -164,8 +164,7 @@ func Full(shape []int, value float64, dtype DType) (Array, error) {
 	out := newArray(C.mlx_array_new())
 	clearMLXError()
 	if code := C.mlx_full(out.outHandle(), cIntPtr(cshape), C.size_t(len(cshape)), fillHandle, cdtype, stream); code != 0 {
-		_ = out.Close()
-		return Array{}, mlxError("mlx_full", int(code))
+		return closeArrayAfterError(out, mlxError("mlx_full", int(code)))
 	}
 	return out, nil
 }
@@ -201,8 +200,7 @@ func AddMM(c, a, b Array, alpha, beta float32) (Array, error) {
 	out := newArray(C.mlx_array_new())
 	clearMLXError()
 	if code := C.mlx_addmm(out.outHandle(), chandle, ahandle, bhandle, C.float(alpha), C.float(beta), stream); code != 0 {
-		_ = out.Close()
-		return Array{}, mlxError("mlx_addmm", int(code))
+		return closeArrayAfterError(out, mlxError("mlx_addmm", int(code)))
 	}
 	return out, nil
 }
@@ -280,8 +278,7 @@ func Clip(a, min, max Array) (Array, error) {
 	out := newArray(C.mlx_array_new())
 	clearMLXError()
 	if code := C.mlx_clip(out.outHandle(), ahandle, minHandle, maxHandle, stream); code != 0 {
-		_ = out.Close()
-		return Array{}, mlxError("mlx_clip", int(code))
+		return closeArrayAfterError(out, mlxError("mlx_clip", int(code)))
 	}
 	return out, nil
 }
@@ -310,8 +307,7 @@ func ArangeDType(start, stop, step float64, dtype DType) (Array, error) {
 	out := newArray(C.mlx_array_new())
 	clearMLXError()
 	if code := C.mlx_arange(out.outHandle(), C.double(start), C.double(stop), C.double(step), cdtype, stream); code != 0 {
-		_ = out.Close()
-		return Array{}, mlxError("mlx_arange", int(code))
+		return closeArrayAfterError(out, mlxError("mlx_arange", int(code)))
 	}
 	return out, nil
 }
@@ -699,8 +695,7 @@ func Where(condition, x, y Array) (Array, error) {
 	out := newArray(C.mlx_array_new())
 	clearMLXError()
 	if code := C.mlx_where(out.outHandle(), chandle, xhandle, yhandle, stream); code != 0 {
-		_ = out.Close()
-		return Array{}, mlxError("mlx_where", int(code))
+		return closeArrayAfterError(out, mlxError("mlx_where", int(code)))
 	}
 	return out, nil
 }
@@ -787,8 +782,7 @@ func Load(file string) (Array, error) {
 	out := newArray(C.mlx_array_new())
 	clearMLXError()
 	if code := C.mlx_load(out.outHandle(), cfile, stream); code != 0 {
-		_ = out.Close()
-		return Array{}, mlxError("mlx_load", int(code))
+		return closeArrayAfterError(out, mlxError("mlx_load", int(code)))
 	}
 	return out, nil
 }
@@ -804,6 +798,12 @@ func Save(file string, a Array) error {
 	}
 	cfile := C.CString(file)
 	defer C.free(unsafe.Pointer(cfile))
+
+	_, done, err := currentStream()
+	if err != nil {
+		return err
+	}
+	defer done()
 
 	clearMLXError()
 	if code := C.mlx_save(cfile, handle); code != 0 {
@@ -913,6 +913,12 @@ func SaveSafetensors(file string, arrays map[string]Array, metadata map[string]s
 		}
 	}
 
+	_, done, err := currentStream()
+	if err != nil {
+		return err
+	}
+	defer done()
+
 	clearMLXError()
 	if code := C.mlx_save_safetensors(cfile, carrays, cmetadata); code != 0 {
 		return mlxError("mlx_save_safetensors", int(code))
@@ -934,8 +940,7 @@ func RandomKey(seed uint64) (Array, error) {
 	out := newArray(C.mlx_array_new())
 	clearMLXError()
 	if code := C.mlx_random_key(out.outHandle(), C.uint64_t(seed)); code != 0 {
-		_ = out.Close()
-		return Array{}, mlxError("mlx_random_key", int(code))
+		return closeArrayAfterError(out, mlxError("mlx_random_key", int(code)))
 	}
 	return out, nil
 }
@@ -955,8 +960,7 @@ func RandomNormal(shape []int, dtype DType, loc, scale float32) (Array, error) {
 	out := newArray(C.mlx_array_new())
 	clearMLXError()
 	if code := C.mlx_random_normal(out.outHandle(), cIntPtr(cshape), C.size_t(len(cshape)), cdtype, C.float(loc), C.float(scale), C.mlx_array{}, stream); code != 0 {
-		_ = out.Close()
-		return Array{}, mlxError("mlx_random_normal", int(code))
+		return closeArrayAfterError(out, mlxError("mlx_random_normal", int(code)))
 	}
 	return out, nil
 }
@@ -995,8 +999,7 @@ func RandomUniform(shape []int, dtype DType, low, high float32) (Array, error) {
 	out := newArray(C.mlx_array_new())
 	clearMLXError()
 	if code := C.mlx_random_uniform(out.outHandle(), lowHandle, highHandle, cIntPtr(cshape), C.size_t(len(cshape)), cdtype, C.mlx_array{}, stream); code != 0 {
-		_ = out.Close()
-		return Array{}, mlxError("mlx_random_uniform", int(code))
+		return closeArrayAfterError(out, mlxError("mlx_random_uniform", int(code)))
 	}
 	return out, nil
 }
@@ -1035,8 +1038,7 @@ func RandomRandint(shape []int, dtype DType, low, high int) (Array, error) {
 	out := newArray(C.mlx_array_new())
 	clearMLXError()
 	if code := C.mlx_random_randint(out.outHandle(), lowHandle, highHandle, cIntPtr(cshape), C.size_t(len(cshape)), cdtype, C.mlx_array{}, stream); code != 0 {
-		_ = out.Close()
-		return Array{}, mlxError("mlx_random_randint", int(code))
+		return closeArrayAfterError(out, mlxError("mlx_random_randint", int(code)))
 	}
 	return out, nil
 }
@@ -1066,8 +1068,7 @@ func RandomBernoulli(shape []int, p float32) (Array, error) {
 	out := newArray(C.mlx_array_new())
 	clearMLXError()
 	if code := C.mlx_random_bernoulli(out.outHandle(), pHandle, cIntPtr(cshape), C.size_t(len(cshape)), C.mlx_array{}, stream); code != 0 {
-		_ = out.Close()
-		return Array{}, mlxError("mlx_random_bernoulli", int(code))
+		return closeArrayAfterError(out, mlxError("mlx_random_bernoulli", int(code)))
 	}
 	return out, nil
 }
@@ -1144,39 +1145,32 @@ func (s *SafeTensors) Metadata(name string) (string, bool, error) {
 	return C.GoString(value), true, nil
 }
 
-// SetDefaultCPU switches MLX's default device and stream to CPU index 0.
+// SetDefaultCPU switches wrapper operations to CPU index 0.
 func SetDefaultCPU() error {
 	return SetDefaultDevice(DeviceCPU, 0)
 }
 
-// SetDefaultGPU switches MLX's default device and stream to GPU index 0.
+// SetDefaultGPU switches wrapper operations to GPU index 0.
 func SetDefaultGPU() error {
 	return SetDefaultDevice(DeviceGPU, 0)
 }
 
-// SetDefaultDevice switches the default MLX device and stream used by wrapper
-// operations.
+// SetDefaultDevice switches the default MLX device used by wrapper operations.
 func SetDefaultDevice(deviceType DeviceType, index int) error {
 	if index < 0 {
 		return fmt.Errorf("mlxgo: device index must be non-negative, got %d", index)
 	}
-
-	defaultStreamState.Lock()
-	defer defaultStreamState.Unlock()
-
-	stream, err := newDefaultStream(deviceType, index)
-	if err != nil {
+	if index != 0 {
+		return fmt.Errorf("mlxgo: only device index 0 is supported, got %d", index)
+	}
+	if _, err := cDeviceType(deviceType); err != nil {
 		return err
 	}
 
-	oldStream := defaultStreamState.stream
-	defaultStreamState.deviceType = deviceType
-	defaultStreamState.index = index
-	defaultStreamState.stream = stream
-	if oldStream.ctx != nil {
-		clearMLXError()
-		_ = C.mlx_stream_free(oldStream)
-	}
+	defaultDeviceState.Lock()
+	defaultDeviceState.deviceType = deviceType
+	defaultDeviceState.index = index
+	defaultDeviceState.Unlock()
 	return nil
 }
 
@@ -1207,6 +1201,12 @@ func (a Array) Eval() error {
 	if err != nil {
 		return err
 	}
+	_, done, err := currentStream()
+	if err != nil {
+		return err
+	}
+	defer done()
+
 	clearMLXError()
 	if code := C.mlx_array_eval(handle); code != 0 {
 		return mlxError("mlx_array_eval", int(code))
@@ -1538,8 +1538,7 @@ func shapeOp(shape []int, dtype DType, name string, op func(*C.mlx_array, *C.int
 	out := newArray(C.mlx_array_new())
 	clearMLXError()
 	if code := op(out.outHandle(), cIntPtr(cshape), C.size_t(len(cshape)), cdtype, stream); code != 0 {
-		_ = out.Close()
-		return Array{}, mlxError(name, int(code))
+		return closeArrayAfterError(out, mlxError(name, int(code)))
 	}
 	return out, nil
 }
@@ -1581,6 +1580,11 @@ func checkedArray(handle C.mlx_array, name string) (Array, error) {
 	return newArray(handle), nil
 }
 
+func closeArrayAfterError(out Array, err error) (Array, error) {
+	_ = out.Close()
+	return Array{}, err
+}
+
 func unaryOp(a Array, name string, op func(*C.mlx_array, C.mlx_array, C.mlx_stream) C.int) (Array, error) {
 	input, err := a.handleValue()
 	if err != nil {
@@ -1596,8 +1600,7 @@ func unaryOp(a Array, name string, op func(*C.mlx_array, C.mlx_array, C.mlx_stre
 	out := newArray(C.mlx_array_new())
 	clearMLXError()
 	if code := op(out.outHandle(), input, stream); code != 0 {
-		_ = out.Close()
-		return Array{}, mlxError(name, int(code))
+		return closeArrayAfterError(out, mlxError(name, int(code)))
 	}
 	return out, nil
 }
@@ -1621,8 +1624,7 @@ func binaryOp(a, b Array, name string, op func(*C.mlx_array, C.mlx_array, C.mlx_
 	out := newArray(C.mlx_array_new())
 	clearMLXError()
 	if code := op(out.outHandle(), left, right, stream); code != 0 {
-		_ = out.Close()
-		return Array{}, mlxError(name, int(code))
+		return closeArrayAfterError(out, mlxError(name, int(code)))
 	}
 	return out, nil
 }
@@ -1643,53 +1645,51 @@ func vectorOp(arrays []Array, name string, op func(*C.mlx_array, C.mlx_vector_ar
 	out := newArray(C.mlx_array_new())
 	clearMLXError()
 	if code := op(out.outHandle(), vec, stream); code != 0 {
-		_ = out.Close()
-		return Array{}, mlxError(name, int(code))
+		return closeArrayAfterError(out, mlxError(name, int(code)))
 	}
 	return out, nil
 }
 
 func currentStream() (C.mlx_stream, func(), error) {
-	defaultStreamState.Lock()
-	if defaultStreamState.stream.ctx == nil {
-		stream, err := newDefaultStream(defaultStreamState.deviceType, defaultStreamState.index)
-		if err != nil {
-			defaultStreamState.Unlock()
-			return C.mlx_stream{}, nil, err
-		}
-		defaultStreamState.stream = stream
+	// MLX streams are scoped to the OS thread that creates them. Keep the
+	// goroutine pinned until the caller finishes the native operation.
+	runtime.LockOSThread()
+
+	defaultDeviceState.Lock()
+	deviceType := defaultDeviceState.deviceType
+	index := defaultDeviceState.index
+	defaultDeviceState.Unlock()
+
+	stream, err := newDefaultStream(deviceType, index)
+	if err != nil {
+		runtime.UnlockOSThread()
+		return C.mlx_stream{}, nil, err
 	}
-	return defaultStreamState.stream, defaultStreamState.Unlock, nil
+	return stream, func() {
+		clearMLXError()
+		_ = C.mlx_stream_free(stream)
+		runtime.UnlockOSThread()
+	}, nil
 }
 
 func newDefaultStream(deviceType DeviceType, index int) (C.mlx_stream, error) {
-	cdeviceType, err := cDeviceType(deviceType)
-	if err != nil {
+	if index != 0 {
+		return C.mlx_stream{}, fmt.Errorf("mlxgo: only device index 0 is supported, got %d", index)
+	}
+	if _, err := cDeviceType(deviceType); err != nil {
 		return C.mlx_stream{}, err
 	}
 
 	clearMLXError()
-	dev := C.mlx_device_new_type(cdeviceType, C.int(index))
-	if dev.ctx == nil {
-		return C.mlx_stream{}, mlxEmptyHandleError("mlx_device_new_type", fmt.Sprintf("%s device %d", deviceType, index))
+	var stream C.mlx_stream
+	switch deviceType {
+	case DeviceCPU:
+		stream = C.mlx_default_cpu_stream_new()
+	case DeviceGPU:
+		stream = C.mlx_default_gpu_stream_new()
 	}
-	defer C.mlx_device_free(dev)
-
-	clearMLXError()
-	if code := C.mlx_set_default_device(dev); code != 0 {
-		return C.mlx_stream{}, mlxError("mlx_set_default_device", int(code))
-	}
-
-	clearMLXError()
-	stream := C.mlx_stream_new_device(dev)
 	if stream.ctx == nil {
-		return C.mlx_stream{}, mlxEmptyHandleError("mlx_stream_new_device", fmt.Sprintf("%s stream %d", deviceType, index))
-	}
-
-	clearMLXError()
-	if code := C.mlx_set_default_stream(stream); code != 0 {
-		_ = C.mlx_stream_free(stream)
-		return C.mlx_stream{}, mlxError("mlx_set_default_stream", int(code))
+		return C.mlx_stream{}, mlxEmptyHandleError(fmt.Sprintf("mlx_default_%s_stream_new", deviceType), fmt.Sprintf("%s stream %d", deviceType, index))
 	}
 	return stream, nil
 }

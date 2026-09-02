@@ -3,11 +3,13 @@
 package mlx
 
 import (
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -226,6 +228,78 @@ func TestRuntimeInvalidNativeOperationReturnsError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "broadcast") {
 		t.Fatalf("expected MLX error details, got %v", err)
+	}
+}
+
+func TestRuntimeConcurrentBuildAndEval(t *testing.T) {
+	tests := []struct {
+		name string
+		set  func() error
+	}{
+		{name: "cpu", set: SetDefaultCPU},
+		{name: "gpu", set: SetDefaultGPU},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.set(); err != nil {
+				t.Fatal(err)
+			}
+
+			const workers = 8
+			const iterations = 500
+
+			var wg sync.WaitGroup
+			errs := make(chan error, workers)
+			for worker := 0; worker < workers; worker++ {
+				wg.Add(1)
+				go func(worker int) {
+					defer wg.Done()
+					for i := 0; i < iterations; i++ {
+						if err := buildAndEvalOnce(worker, i); err != nil {
+							errs <- err
+							return
+						}
+					}
+				}(worker)
+			}
+			wg.Wait()
+			close(errs)
+
+			for err := range errs {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestRuntimeConcurrentErrorMessagesAreThreadLocal(t *testing.T) {
+	if err := SetDefaultCPU(); err != nil {
+		t.Fatal(err)
+	}
+
+	const workers = 8
+	const iterations = 400
+
+	var wg sync.WaitGroup
+	errs := make(chan error, workers)
+	for worker := 0; worker < workers; worker++ {
+		wg.Add(1)
+		go func(worker int) {
+			defer wg.Done()
+			for i := 0; i < iterations; i++ {
+				if err := failWithDistinctMLXError(worker, i); err != nil {
+					errs <- err
+					return
+				}
+			}
+		}(worker)
+	}
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		t.Fatal(err)
 	}
 }
 
@@ -492,6 +566,82 @@ func TestRuntimeValueAndGrad(t *testing.T) {
 	}
 	assertFloat32Close(t, values[0], []float32{14.0 / 3.0})
 	assertFloat32Close(t, grads[0], []float32{2.0 / 3.0, 4.0 / 3.0, 2})
+}
+
+func buildAndEvalOnce(worker, iteration int) error {
+	left, err := NewFloat32([]float32{float32(worker), float32(iteration)}, []int{2})
+	if err != nil {
+		return fmt.Errorf("worker %d iteration %d new left: %w", worker, iteration, err)
+	}
+	defer left.Close()
+
+	right, err := NewFloat32([]float32{1, 2}, []int{2})
+	if err != nil {
+		return fmt.Errorf("worker %d iteration %d new right: %w", worker, iteration, err)
+	}
+	defer right.Close()
+
+	sum, err := Add(left, right)
+	if err != nil {
+		return fmt.Errorf("worker %d iteration %d add: %w", worker, iteration, err)
+	}
+	defer sum.Close()
+
+	if err := sum.Eval(); err != nil {
+		return fmt.Errorf("worker %d iteration %d eval: %w", worker, iteration, err)
+	}
+
+	data, err := sum.Float32Data()
+	if err != nil {
+		return fmt.Errorf("worker %d iteration %d data: %w", worker, iteration, err)
+	}
+	expected := []float32{float32(worker) + 1, float32(iteration) + 2}
+	if !reflect.DeepEqual(data, expected) {
+		return fmt.Errorf("worker %d iteration %d data = %v, want %v", worker, iteration, data, expected)
+	}
+	return nil
+}
+
+func failWithDistinctMLXError(worker, iteration int) error {
+	if iteration%2 == 0 {
+		left, err := NewFloat32([]float32{1, 2, 3}, []int{3})
+		if err != nil {
+			return fmt.Errorf("worker %d iteration %d new add left: %w", worker, iteration, err)
+		}
+		defer left.Close()
+
+		right, err := NewFloat32([]float32{1, 2, 3, 4, 5}, []int{5})
+		if err != nil {
+			return fmt.Errorf("worker %d iteration %d new add right: %w", worker, iteration, err)
+		}
+		defer right.Close()
+
+		_, err = Add(left, right)
+		if err == nil {
+			return fmt.Errorf("worker %d iteration %d add succeeded unexpectedly", worker, iteration)
+		}
+		text := err.Error()
+		if !strings.Contains(text, "broadcast") || strings.Contains(text, "reshape") {
+			return fmt.Errorf("worker %d iteration %d add error = %q", worker, iteration, text)
+		}
+		return nil
+	}
+
+	input, err := NewFloat32([]float32{1, 2, 3}, []int{3})
+	if err != nil {
+		return fmt.Errorf("worker %d iteration %d new reshape input: %w", worker, iteration, err)
+	}
+	defer input.Close()
+
+	_, err = Reshape(input, []int{4, 4})
+	if err == nil {
+		return fmt.Errorf("worker %d iteration %d reshape succeeded unexpectedly", worker, iteration)
+	}
+	text := err.Error()
+	if !strings.Contains(text, "reshape") || strings.Contains(text, "broadcast") {
+		return fmt.Errorf("worker %d iteration %d reshape error = %q", worker, iteration, text)
+	}
+	return nil
 }
 
 func mustNewFloat32(t *testing.T, data []float32, shape []int) Array {

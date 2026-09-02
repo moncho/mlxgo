@@ -257,6 +257,12 @@ func Eval(arrays ...Array) error {
 	}
 	defer C.mlx_vector_array_free(vec)
 
+	_, done, err := currentStream()
+	if err != nil {
+		return err
+	}
+	defer done()
+
 	clearMLXError()
 	if code := C.mlx_eval(vec); code != 0 {
 		return mlxError("mlx_eval", int(code))
@@ -271,6 +277,12 @@ func AsyncEval(arrays ...Array) error {
 		return err
 	}
 	defer C.mlx_vector_array_free(vec)
+
+	_, done, err := currentStream()
+	if err != nil {
+		return err
+	}
+	defer done()
 
 	clearMLXError()
 	if code := C.mlx_async_eval(vec); code != 0 {

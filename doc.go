@@ -12,7 +12,7 @@
 // CrossEntropyAxis, SoftmaxCrossEntropyAxis, and SGD updates.
 //
 // Operations use GPU index 0 by default. Call SetDefaultCPU for CPU execution
-// or SetDefaultDevice to choose a specific device class and index.
+// or SetDefaultDevice to choose CPU or GPU index 0 explicitly.
 //
 // NewValueAndGrad wraps MLX's closure-based autograd. Callback inputs are
 // temporary handles managed by the wrapper; callback outputs are transferred to

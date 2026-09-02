@@ -27,3 +27,19 @@ jobs:
       - run: brew install mlx-c
       - run: CGO_ENABLED=1 go test -tags mlx ./...
       - run: CGO_ENABLED=1 go vet -tags mlx ./...
+
+  runtime:
+    name: Native mlx-c runtime
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: brew install mlx-c
+      - run: CGO_ENABLED=1 go test -tags "mlx mlxruntime" ./...
+      - run: CGO_ENABLED=1 go run -tags mlx ./cmd/smoke
+      - run: CGO_ENABLED=1 go run -tags mlx ./cmd/linear
+      - run: CGO_ENABLED=1 go run -tags mlx ./cmd/mlp
+      - run: CGO_ENABLED=1 go run -tags mlx ./cmd/train-linear
+      - run: CGO_ENABLED=1 go run -tags mlx ./cmd/autograd-linear

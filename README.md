@@ -47,7 +47,8 @@ Expected behavior: the program creates two MLX float32 arrays, adds them, forces
 evaluation, and prints the resulting Go slice.
 
 Operations use GPU index 0 by default. Call `SetDefaultCPU` before creating or
-running arrays when you want CPU execution instead.
+running arrays when you want CPU execution instead. `SetDefaultDevice` currently
+supports CPU or GPU index 0.
 
 Run the linear-regression loss example:
 
@@ -159,8 +160,9 @@ make autograd-linear
 - MLX computation is lazy. Call `Eval` or a data-copy method such as
   `Float32Data` before reading results.
 - The wrapper defaults to GPU index 0. Call `SetDefaultCPU` when you want CPU
-  execution. This does not bypass MLX's Metal initialization requirement in
-  sandboxed processes that cannot enumerate a Metal device.
+  execution, or `SetDefaultDevice` to choose CPU/GPU index 0 explicitly. This
+  does not bypass MLX's Metal initialization requirement in sandboxed processes
+  that cannot enumerate a Metal device.
 - Data-copy methods call `Contiguous` internally before touching MLX's raw data
   pointers, so transposed and broadcasted views copy back correctly.
 - The native build installs an MLX error handler during package initialization.
