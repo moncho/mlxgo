@@ -11,6 +11,10 @@
 // The package includes small helpers for common model code: Linear, MSELoss,
 // CrossEntropyAxis, SoftmaxCrossEntropyAxis, and SGD updates.
 //
+// Operations use GPU index 0 by default. Call SetDefaultCPU for CPU execution
+// or SetDefaultDevice to choose a specific device class and index.
+//
 // NewValueAndGrad wraps MLX's closure-based autograd. Callback inputs are
-// borrowed arrays; callback outputs are transferred to MLX.
+// temporary handles managed by the wrapper; callback outputs are transferred to
+// MLX.
 package mlx

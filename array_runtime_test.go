@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -167,6 +168,65 @@ func TestRuntimeCreationElementwiseAndShapeOps(t *testing.T) {
 	relu := mustReLU(t, neg)
 	defer relu.Close()
 	assertFloat32Data(t, relu, []float32{0, 0, 0, 0})
+}
+
+func TestRuntimeScalarAndEmptyShapes(t *testing.T) {
+	if err := SetDefaultCPU(); err != nil {
+		t.Fatal(err)
+	}
+
+	scalar := mustNewFloat32(t, []float32{7}, nil)
+	defer scalar.Close()
+	assertShape(t, scalar, []int{})
+	assertFloat32Data(t, scalar, []float32{7})
+
+	zeroDim := mustNewFloat32(t, nil, []int{0})
+	defer zeroDim.Close()
+	assertShape(t, zeroDim, []int{0})
+	assertFloat32Data(t, zeroDim, []float32{})
+
+	zeroScalar := mustZeros(t, nil, Float32)
+	defer zeroScalar.Close()
+	assertShape(t, zeroScalar, []int{})
+	assertFloat32Data(t, zeroScalar, []float32{0})
+}
+
+func TestRuntimeStridedDataReadsUseContiguousCopy(t *testing.T) {
+	if err := SetDefaultCPU(); err != nil {
+		t.Fatal(err)
+	}
+
+	matrix := mustNewFloat32(t, []float32{1, 2, 3, 4, 5, 6}, []int{2, 3})
+	defer matrix.Close()
+	transposed := mustTranspose(t, matrix)
+	defer transposed.Close()
+	assertShape(t, transposed, []int{3, 2})
+	assertFloat32Data(t, transposed, []float32{1, 4, 2, 5, 3, 6})
+
+	row := mustNewFloat32(t, []float32{1, 2}, []int{2})
+	defer row.Close()
+	broadcasted := mustBroadcastTo(t, row, []int{4, 2})
+	defer broadcasted.Close()
+	assertFloat32Data(t, broadcasted, []float32{1, 2, 1, 2, 1, 2, 1, 2})
+}
+
+func TestRuntimeInvalidNativeOperationReturnsError(t *testing.T) {
+	if err := SetDefaultCPU(); err != nil {
+		t.Fatal(err)
+	}
+
+	a := mustNewFloat32(t, []float32{1, 2, 3}, []int{3})
+	defer a.Close()
+	b := mustNewFloat32(t, []float32{1, 2, 3, 4, 5}, []int{5})
+	defer b.Close()
+
+	_, err := Add(a, b)
+	if err == nil {
+		t.Fatal("expected shape mismatch to return an error")
+	}
+	if !strings.Contains(err.Error(), "broadcast") {
+		t.Fatalf("expected MLX error details, got %v", err)
+	}
 }
 
 func TestRuntimeModelOps(t *testing.T) {

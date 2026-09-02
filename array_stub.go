@@ -14,6 +14,16 @@ type Array struct{}
 // SafeTensors is a lazily loaded safetensors handle in the MLX build.
 type SafeTensors struct{}
 
+// DeviceType identifies an MLX device class in the native build.
+type DeviceType int
+
+const (
+	// DeviceGPU selects an Apple Silicon GPU device.
+	DeviceGPU DeviceType = iota
+	// DeviceCPU selects a CPU device.
+	DeviceCPU
+)
+
 func NewFloat32(_ []float32, _ []int) (Array, error) {
 	return Array{}, errBuiltWithoutMLX
 }
@@ -202,6 +212,10 @@ func StopGradient(_ Array) (Array, error) {
 	return Array{}, errBuiltWithoutMLX
 }
 
+func Contiguous(_ Array) (Array, error) {
+	return Array{}, errBuiltWithoutMLX
+}
+
 func Sum(_ Array, _ bool) (Array, error) {
 	return Array{}, errBuiltWithoutMLX
 }
@@ -384,6 +398,25 @@ func (*SafeTensors) Metadata(_ string) (string, bool, error) {
 
 func SetDefaultCPU() error {
 	return errBuiltWithoutMLX
+}
+
+func SetDefaultGPU() error {
+	return errBuiltWithoutMLX
+}
+
+func SetDefaultDevice(_ DeviceType, _ int) error {
+	return errBuiltWithoutMLX
+}
+
+func (d DeviceType) String() string {
+	switch d {
+	case DeviceGPU:
+		return "gpu"
+	case DeviceCPU:
+		return "cpu"
+	default:
+		return "unknown"
+	}
 }
 
 func (*Array) Close() error {

@@ -26,9 +26,10 @@ import (
 
 // Func is a Go function that can be wrapped as an MLX closure.
 //
-// Callback input arrays are borrowed from MLX. Returned arrays are transferred
-// to MLX, so return freshly created arrays rather than arrays you intend to keep
-// using after the callback returns.
+// Callback input arrays are temporary handles managed by the wrapper. Use them
+// only during the callback. Returned arrays are transferred to MLX, so return
+// freshly created arrays rather than arrays you intend to keep using after the
+// callback returns.
 type Func func([]Array) ([]Array, error)
 
 // Closure owns an MLX function closure backed by a Go callback.
@@ -86,10 +87,11 @@ func NewClosure(fn Func) (*Closure, error) {
 		return nil, err
 	}
 
+	clearMLXError()
 	handle := C.mlxgo_closure_new_func_payload(payload)
 	if handle.ctx == nil {
 		freeClosurePayload(payload)
-		return nil, errors.New("mlxgo: mlx_closure_new_func_payload returned an empty closure")
+		return nil, mlxEmptyHandleError("mlx_closure_new_func_payload", "closure")
 	}
 	return &Closure{handle: handle, state: state}, nil
 }
@@ -105,19 +107,21 @@ func (c *Closure) Apply(inputs ...Array) ([]Array, error) {
 	}
 	defer C.mlx_vector_array_free(inputVec)
 
+	clearMLXError()
 	outVec := C.mlx_vector_array_new()
 	if outVec.ctx == nil {
-		return nil, errors.New("mlxgo: failed to allocate closure output vector")
+		return nil, mlxEmptyHandleError("mlx_vector_array_new", "array vector")
 	}
 	defer C.mlx_vector_array_free(outVec)
 
+	clearMLXError()
 	if code := C.mlx_closure_apply(&outVec, c.handle, inputVec); code != 0 {
 		if c.state != nil {
 			if err := c.state.popErr(); err != nil {
 				return nil, err
 			}
 		}
-		return nil, fmt.Errorf("mlxgo: mlx_closure_apply failed with code %d", int(code))
+		return nil, mlxError("mlx_closure_apply", int(code))
 	}
 	return vectorToArrays(outVec, true)
 }
@@ -131,8 +135,9 @@ func (c *Closure) Close() error {
 		c.closed = true
 		return nil
 	}
+	clearMLXError()
 	if code := C.mlx_closure_free(c.handle); code != 0 {
-		return fmt.Errorf("mlxgo: mlx_closure_free failed with code %d", int(code))
+		return mlxError("mlx_closure_free", int(code))
 	}
 	c.handle.ctx = nil
 	c.closed = true
@@ -157,15 +162,18 @@ func NewValueAndGrad(fn Func, argnums ...int) (*ValueAndGrad, error) {
 	}
 
 	cargs := cInts(argnums)
+	clearMLXError()
 	handle := C.mlx_closure_value_and_grad_new()
-	if handle.ctx == nil {
-		_ = closure.Close()
-		return nil, errors.New("mlxgo: failed to allocate value-and-grad closure")
-	}
+	handleErr := mlxEmptyHandleError("mlx_closure_value_and_grad_new", "value-and-grad closure")
+	clearMLXError()
 	if code := C.mlx_value_and_grad(&handle, closure.handle, (*C.int)(unsafe.Pointer(&cargs[0])), C.size_t(len(cargs))); code != 0 {
 		_ = C.mlx_closure_value_and_grad_free(handle)
 		_ = closure.Close()
-		return nil, fmt.Errorf("mlxgo: mlx_value_and_grad failed with code %d", int(code))
+		return nil, mlxError("mlx_value_and_grad", int(code))
+	}
+	if handle.ctx == nil {
+		_ = closure.Close()
+		return nil, handleErr
 	}
 
 	return &ValueAndGrad{handle: handle, fun: closure}, nil
@@ -183,25 +191,28 @@ func (v *ValueAndGrad) Apply(inputs ...Array) ([]Array, []Array, error) {
 	}
 	defer C.mlx_vector_array_free(inputVec)
 
+	clearMLXError()
 	valuesVec := C.mlx_vector_array_new()
 	if valuesVec.ctx == nil {
-		return nil, nil, errors.New("mlxgo: failed to allocate value output vector")
+		return nil, nil, mlxEmptyHandleError("mlx_vector_array_new", "value array vector")
 	}
 	defer C.mlx_vector_array_free(valuesVec)
 
+	clearMLXError()
 	gradsVec := C.mlx_vector_array_new()
 	if gradsVec.ctx == nil {
-		return nil, nil, errors.New("mlxgo: failed to allocate gradient output vector")
+		return nil, nil, mlxEmptyHandleError("mlx_vector_array_new", "gradient array vector")
 	}
 	defer C.mlx_vector_array_free(gradsVec)
 
+	clearMLXError()
 	if code := C.mlx_closure_value_and_grad_apply(&valuesVec, &gradsVec, v.handle, inputVec); code != 0 {
 		if v.fun != nil && v.fun.state != nil {
 			if err := v.fun.state.popErr(); err != nil {
 				return nil, nil, err
 			}
 		}
-		return nil, nil, fmt.Errorf("mlxgo: mlx_closure_value_and_grad_apply failed with code %d", int(code))
+		return nil, nil, mlxError("mlx_closure_value_and_grad_apply", int(code))
 	}
 
 	values, err := vectorToArrays(valuesVec, true)
@@ -223,8 +234,9 @@ func (v *ValueAndGrad) Close() error {
 	}
 	var first error
 	if v.handle.ctx != nil {
+		clearMLXError()
 		if code := C.mlx_closure_value_and_grad_free(v.handle); code != 0 {
-			first = fmt.Errorf("mlxgo: mlx_closure_value_and_grad_free failed with code %d", int(code))
+			first = mlxError("mlx_closure_value_and_grad_free", int(code))
 		}
 		v.handle.ctx = nil
 	}
@@ -245,8 +257,9 @@ func Eval(arrays ...Array) error {
 	}
 	defer C.mlx_vector_array_free(vec)
 
+	clearMLXError()
 	if code := C.mlx_eval(vec); code != 0 {
-		return fmt.Errorf("mlxgo: mlx_eval failed with code %d", int(code))
+		return mlxError("mlx_eval", int(code))
 	}
 	return nil
 }
@@ -259,8 +272,9 @@ func AsyncEval(arrays ...Array) error {
 	}
 	defer C.mlx_vector_array_free(vec)
 
+	clearMLXError()
 	if code := C.mlx_async_eval(vec); code != 0 {
-		return fmt.Errorf("mlxgo: mlx_async_eval failed with code %d", int(code))
+		return mlxError("mlx_async_eval", int(code))
 	}
 	return nil
 }
@@ -314,9 +328,10 @@ func vectorToArrays(vec C.mlx_vector_array, owned bool) ([]Array, error) {
 	arrays := make([]Array, size)
 	for i := 0; i < size; i++ {
 		var handle C.mlx_array
+		clearMLXError()
 		if code := C.mlx_vector_array_get(&handle, vec, C.size_t(i)); code != 0 {
 			closeArrays(arrays[:i])
-			return nil, fmt.Errorf("mlxgo: mlx_vector_array_get(%d) failed with code %d", i, int(code))
+			return nil, fmt.Errorf("mlxgo: mlx_vector_array_get(%d): %w", i, mlxError("mlx_vector_array_get", int(code)))
 		}
 		if handle.ctx == nil {
 			closeArrays(arrays[:i])

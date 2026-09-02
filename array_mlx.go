@@ -13,6 +13,8 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"sync"
+	"sync/atomic"
 	"unsafe"
 )
 
@@ -25,7 +27,7 @@ type Array struct {
 type arrayState struct {
 	handle C.mlx_array
 	owned  bool
-	closed bool
+	closed atomic.Bool
 }
 
 // SafeTensors owns maps loaded from a safetensors file.
@@ -35,10 +37,30 @@ type SafeTensors struct {
 	closed   bool
 }
 
+// DeviceType identifies an MLX device class.
+type DeviceType int
+
+const (
+	// DeviceGPU selects an Apple Silicon GPU device.
+	DeviceGPU DeviceType = iota
+	// DeviceCPU selects a CPU device.
+	DeviceCPU
+)
+
+var defaultStreamState = struct {
+	sync.Mutex
+	deviceType DeviceType
+	index      int
+	stream     C.mlx_stream
+}{
+	deviceType: DeviceGPU,
+	index:      0,
+}
+
 // NewFloat32 copies data into a new MLX float32 array with the provided shape.
 func NewFloat32(data []float32, shape []int) (Array, error) {
 	if len(data) == 0 {
-		return Array{}, errors.New("mlxgo: data must not be empty")
+		return newData(nil, len(data), shape, Float32)
 	}
 	return newData(unsafe.Pointer(&data[0]), len(data), shape, Float32)
 }
@@ -46,7 +68,7 @@ func NewFloat32(data []float32, shape []int) (Array, error) {
 // NewFloat64 copies data into a new MLX float64 array with the provided shape.
 func NewFloat64(data []float64, shape []int) (Array, error) {
 	if len(data) == 0 {
-		return Array{}, errors.New("mlxgo: data must not be empty")
+		return newData(nil, len(data), shape, Float64)
 	}
 	return newData(unsafe.Pointer(&data[0]), len(data), shape, Float64)
 }
@@ -54,7 +76,7 @@ func NewFloat64(data []float64, shape []int) (Array, error) {
 // NewInt32 copies data into a new MLX int32 array with the provided shape.
 func NewInt32(data []int32, shape []int) (Array, error) {
 	if len(data) == 0 {
-		return Array{}, errors.New("mlxgo: data must not be empty")
+		return newData(nil, len(data), shape, Int32)
 	}
 	return newData(unsafe.Pointer(&data[0]), len(data), shape, Int32)
 }
@@ -62,23 +84,26 @@ func NewInt32(data []int32, shape []int) (Array, error) {
 // NewInt64 copies data into a new MLX int64 array with the provided shape.
 func NewInt64(data []int64, shape []int) (Array, error) {
 	if len(data) == 0 {
-		return Array{}, errors.New("mlxgo: data must not be empty")
+		return newData(nil, len(data), shape, Int64)
 	}
 	return newData(unsafe.Pointer(&data[0]), len(data), shape, Int64)
 }
 
 // NewScalarFloat32 creates a scalar MLX float32 array.
 func NewScalarFloat32(value float32) (Array, error) {
+	clearMLXError()
 	return checkedArray(C.mlx_array_new_float32(C.float(value)), "mlx_array_new_float32")
 }
 
 // NewScalarFloat64 creates a scalar MLX float64 array.
 func NewScalarFloat64(value float64) (Array, error) {
+	clearMLXError()
 	return checkedArray(C.mlx_array_new_float64(C.double(value)), "mlx_array_new_float64")
 }
 
 // NewScalarInt creates a scalar MLX int array.
 func NewScalarInt(value int) (Array, error) {
+	clearMLXError()
 	return checkedArray(C.mlx_array_new_int(C.int(value)), "mlx_array_new_int")
 }
 
@@ -130,13 +155,17 @@ func Full(shape []int, value float64, dtype DType) (Array, error) {
 		return Array{}, err
 	}
 
-	stream := C.mlx_default_cpu_stream_new()
-	defer C.mlx_stream_free(stream)
+	stream, done, err := currentStream()
+	if err != nil {
+		return Array{}, err
+	}
+	defer done()
 
 	out := newArray(C.mlx_array_new())
-	if code := C.mlx_full(out.outHandle(), (*C.int)(unsafe.Pointer(&cshape[0])), C.size_t(len(cshape)), fillHandle, cdtype, stream); code != 0 {
+	clearMLXError()
+	if code := C.mlx_full(out.outHandle(), cIntPtr(cshape), C.size_t(len(cshape)), fillHandle, cdtype, stream); code != 0 {
 		_ = out.Close()
-		return Array{}, fmt.Errorf("mlxgo: mlx_full failed with code %d", int(code))
+		return Array{}, mlxError("mlx_full", int(code))
 	}
 	return out, nil
 }
@@ -163,13 +192,17 @@ func AddMM(c, a, b Array, alpha, beta float32) (Array, error) {
 		return Array{}, err
 	}
 
-	stream := C.mlx_default_cpu_stream_new()
-	defer C.mlx_stream_free(stream)
+	stream, done, err := currentStream()
+	if err != nil {
+		return Array{}, err
+	}
+	defer done()
 
 	out := newArray(C.mlx_array_new())
+	clearMLXError()
 	if code := C.mlx_addmm(out.outHandle(), chandle, ahandle, bhandle, C.float(alpha), C.float(beta), stream); code != 0 {
 		_ = out.Close()
-		return Array{}, fmt.Errorf("mlxgo: mlx_addmm failed with code %d", int(code))
+		return Array{}, mlxError("mlx_addmm", int(code))
 	}
 	return out, nil
 }
@@ -238,13 +271,17 @@ func Clip(a, min, max Array) (Array, error) {
 		return Array{}, err
 	}
 
-	stream := C.mlx_default_cpu_stream_new()
-	defer C.mlx_stream_free(stream)
+	stream, done, err := currentStream()
+	if err != nil {
+		return Array{}, err
+	}
+	defer done()
 
 	out := newArray(C.mlx_array_new())
+	clearMLXError()
 	if code := C.mlx_clip(out.outHandle(), ahandle, minHandle, maxHandle, stream); code != 0 {
 		_ = out.Close()
-		return Array{}, fmt.Errorf("mlxgo: mlx_clip failed with code %d", int(code))
+		return Array{}, mlxError("mlx_clip", int(code))
 	}
 	return out, nil
 }
@@ -264,13 +301,17 @@ func ArangeDType(start, stop, step float64, dtype DType) (Array, error) {
 		return Array{}, err
 	}
 
-	stream := C.mlx_default_cpu_stream_new()
-	defer C.mlx_stream_free(stream)
+	stream, done, err := currentStream()
+	if err != nil {
+		return Array{}, err
+	}
+	defer done()
 
 	out := newArray(C.mlx_array_new())
+	clearMLXError()
 	if code := C.mlx_arange(out.outHandle(), C.double(start), C.double(stop), C.double(step), cdtype, stream); code != 0 {
 		_ = out.Close()
-		return Array{}, fmt.Errorf("mlxgo: mlx_arange failed with code %d", int(code))
+		return Array{}, mlxError("mlx_arange", int(code))
 	}
 	return out, nil
 }
@@ -293,7 +334,7 @@ func Reshape(a Array, shape []int) (Array, error) {
 		return Array{}, err
 	}
 	return unaryOp(a, "mlx_reshape", func(out *C.mlx_array, input C.mlx_array, stream C.mlx_stream) C.int {
-		return C.mlx_reshape(out, input, (*C.int)(unsafe.Pointer(&cshape[0])), C.size_t(len(cshape)), stream)
+		return C.mlx_reshape(out, input, cIntPtr(cshape), C.size_t(len(cshape)), stream)
 	})
 }
 
@@ -311,7 +352,7 @@ func TransposeAxes(a Array, axes []int) (Array, error) {
 	}
 	caxes := cInts(axes)
 	return unaryOp(a, "mlx_transpose_axes", func(out *C.mlx_array, input C.mlx_array, stream C.mlx_stream) C.int {
-		return C.mlx_transpose_axes(out, input, (*C.int)(unsafe.Pointer(&caxes[0])), C.size_t(len(caxes)), stream)
+		return C.mlx_transpose_axes(out, input, cIntPtr(caxes), C.size_t(len(caxes)), stream)
 	})
 }
 
@@ -322,7 +363,7 @@ func BroadcastTo(a Array, shape []int) (Array, error) {
 		return Array{}, err
 	}
 	return unaryOp(a, "mlx_broadcast_to", func(out *C.mlx_array, input C.mlx_array, stream C.mlx_stream) C.int {
-		return C.mlx_broadcast_to(out, input, (*C.int)(unsafe.Pointer(&cshape[0])), C.size_t(len(cshape)), stream)
+		return C.mlx_broadcast_to(out, input, cIntPtr(cshape), C.size_t(len(cshape)), stream)
 	})
 }
 
@@ -340,7 +381,7 @@ func ExpandDimsAxes(a Array, axes []int) (Array, error) {
 	}
 	caxes := cInts(axes)
 	return unaryOp(a, "mlx_expand_dims_axes", func(out *C.mlx_array, input C.mlx_array, stream C.mlx_stream) C.int {
-		return C.mlx_expand_dims_axes(out, input, (*C.int)(unsafe.Pointer(&caxes[0])), C.size_t(len(caxes)), stream)
+		return C.mlx_expand_dims_axes(out, input, cIntPtr(caxes), C.size_t(len(caxes)), stream)
 	})
 }
 
@@ -365,7 +406,7 @@ func SqueezeAxes(a Array, axes []int) (Array, error) {
 	}
 	caxes := cInts(axes)
 	return unaryOp(a, "mlx_squeeze_axes", func(out *C.mlx_array, input C.mlx_array, stream C.mlx_stream) C.int {
-		return C.mlx_squeeze_axes(out, input, (*C.int)(unsafe.Pointer(&caxes[0])), C.size_t(len(caxes)), stream)
+		return C.mlx_squeeze_axes(out, input, cIntPtr(caxes), C.size_t(len(caxes)), stream)
 	})
 }
 
@@ -463,6 +504,14 @@ func StopGradient(a Array) (Array, error) {
 	})
 }
 
+// Contiguous returns a row-contiguous copy of a, suitable for direct data
+// access.
+func Contiguous(a Array) (Array, error) {
+	return unaryOp(a, "mlx_contiguous", func(out *C.mlx_array, input C.mlx_array, stream C.mlx_stream) C.int {
+		return C.mlx_contiguous(out, input, C.bool(false), stream)
+	})
+}
+
 // Sum reduces all elements of a.
 func Sum(a Array, keepdims bool) (Array, error) {
 	return unaryOp(a, "mlx_sum", func(out *C.mlx_array, input C.mlx_array, stream C.mlx_stream) C.int {
@@ -484,7 +533,7 @@ func SumAxes(a Array, axes []int, keepdims bool) (Array, error) {
 	}
 	caxes := cInts(axes)
 	return unaryOp(a, "mlx_sum_axes", func(out *C.mlx_array, input C.mlx_array, stream C.mlx_stream) C.int {
-		return C.mlx_sum_axes(out, input, (*C.int)(unsafe.Pointer(&caxes[0])), C.size_t(len(caxes)), C.bool(keepdims), stream)
+		return C.mlx_sum_axes(out, input, cIntPtr(caxes), C.size_t(len(caxes)), C.bool(keepdims), stream)
 	})
 }
 
@@ -509,7 +558,7 @@ func MeanAxes(a Array, axes []int, keepdims bool) (Array, error) {
 	}
 	caxes := cInts(axes)
 	return unaryOp(a, "mlx_mean_axes", func(out *C.mlx_array, input C.mlx_array, stream C.mlx_stream) C.int {
-		return C.mlx_mean_axes(out, input, (*C.int)(unsafe.Pointer(&caxes[0])), C.size_t(len(caxes)), C.bool(keepdims), stream)
+		return C.mlx_mean_axes(out, input, cIntPtr(caxes), C.size_t(len(caxes)), C.bool(keepdims), stream)
 	})
 }
 
@@ -534,7 +583,7 @@ func LogSumExpAxes(a Array, axes []int, keepdims bool) (Array, error) {
 	}
 	caxes := cInts(axes)
 	return unaryOp(a, "mlx_logsumexp_axes", func(out *C.mlx_array, input C.mlx_array, stream C.mlx_stream) C.int {
-		return C.mlx_logsumexp_axes(out, input, (*C.int)(unsafe.Pointer(&caxes[0])), C.size_t(len(caxes)), C.bool(keepdims), stream)
+		return C.mlx_logsumexp_axes(out, input, cIntPtr(caxes), C.size_t(len(caxes)), C.bool(keepdims), stream)
 	})
 }
 
@@ -559,7 +608,7 @@ func SoftmaxAxes(a Array, axes []int, precise bool) (Array, error) {
 	}
 	caxes := cInts(axes)
 	return unaryOp(a, "mlx_softmax_axes", func(out *C.mlx_array, input C.mlx_array, stream C.mlx_stream) C.int {
-		return C.mlx_softmax_axes(out, input, (*C.int)(unsafe.Pointer(&caxes[0])), C.size_t(len(caxes)), C.bool(precise), stream)
+		return C.mlx_softmax_axes(out, input, cIntPtr(caxes), C.size_t(len(caxes)), C.bool(precise), stream)
 	})
 }
 
@@ -641,13 +690,17 @@ func Where(condition, x, y Array) (Array, error) {
 		return Array{}, err
 	}
 
-	stream := C.mlx_default_cpu_stream_new()
-	defer C.mlx_stream_free(stream)
+	stream, done, err := currentStream()
+	if err != nil {
+		return Array{}, err
+	}
+	defer done()
 
 	out := newArray(C.mlx_array_new())
+	clearMLXError()
 	if code := C.mlx_where(out.outHandle(), chandle, xhandle, yhandle, stream); code != 0 {
 		_ = out.Close()
-		return Array{}, fmt.Errorf("mlxgo: mlx_where failed with code %d", int(code))
+		return Array{}, mlxError("mlx_where", int(code))
 	}
 	return out, nil
 }
@@ -685,7 +738,7 @@ func GatherSlices(a, indices Array, axis int, sliceSizes []int) (Array, error) {
 	}
 	csizes := cInts(sliceSizes)
 	return binaryOp(a, indices, "mlx_gather_single", func(out *C.mlx_array, input C.mlx_array, idx C.mlx_array, stream C.mlx_stream) C.int {
-		return C.mlx_gather_single(out, input, idx, C.int(axis), (*C.int)(unsafe.Pointer(&csizes[0])), C.size_t(len(csizes)), stream)
+		return C.mlx_gather_single(out, input, idx, C.int(axis), cIntPtr(csizes), C.size_t(len(csizes)), stream)
 	})
 }
 
@@ -725,13 +778,17 @@ func Load(file string) (Array, error) {
 	cfile := C.CString(file)
 	defer C.free(unsafe.Pointer(cfile))
 
-	stream := C.mlx_default_cpu_stream_new()
-	defer C.mlx_stream_free(stream)
+	stream, done, err := currentStream()
+	if err != nil {
+		return Array{}, err
+	}
+	defer done()
 
 	out := newArray(C.mlx_array_new())
+	clearMLXError()
 	if code := C.mlx_load(out.outHandle(), cfile, stream); code != 0 {
 		_ = out.Close()
-		return Array{}, fmt.Errorf("mlxgo: mlx_load failed with code %d", int(code))
+		return Array{}, mlxError("mlx_load", int(code))
 	}
 	return out, nil
 }
@@ -748,8 +805,9 @@ func Save(file string, a Array) error {
 	cfile := C.CString(file)
 	defer C.free(unsafe.Pointer(cfile))
 
+	clearMLXError()
 	if code := C.mlx_save(cfile, handle); code != 0 {
-		return fmt.Errorf("mlxgo: mlx_save failed with code %d", int(code))
+		return mlxError("mlx_save", int(code))
 	}
 	return nil
 }
@@ -763,11 +821,18 @@ func LoadSafetensors(file string) (*SafeTensors, error) {
 	cfile := C.CString(file)
 	defer C.free(unsafe.Pointer(cfile))
 
-	stream := C.mlx_default_cpu_stream_new()
-	defer C.mlx_stream_free(stream)
+	stream, done, err := currentStream()
+	if err != nil {
+		return nil, err
+	}
+	defer done()
 
+	clearMLXError()
 	arrays := C.mlx_map_string_to_array_new()
+	arraysErr := mlxEmptyHandleError("mlx_map_string_to_array_new", "map")
+	clearMLXError()
 	metadata := C.mlx_map_string_to_string_new()
+	metadataErr := mlxEmptyHandleError("mlx_map_string_to_string_new", "map")
 	if arrays.ctx == nil || metadata.ctx == nil {
 		if arrays.ctx != nil {
 			C.mlx_map_string_to_array_free(arrays)
@@ -775,13 +840,17 @@ func LoadSafetensors(file string) (*SafeTensors, error) {
 		if metadata.ctx != nil {
 			C.mlx_map_string_to_string_free(metadata)
 		}
-		return nil, errors.New("mlxgo: failed to allocate safetensors maps")
+		if arrays.ctx == nil {
+			return nil, arraysErr
+		}
+		return nil, metadataErr
 	}
 
+	clearMLXError()
 	if code := C.mlx_load_safetensors(&arrays, &metadata, cfile, stream); code != 0 {
 		C.mlx_map_string_to_array_free(arrays)
 		C.mlx_map_string_to_string_free(metadata)
-		return nil, fmt.Errorf("mlxgo: mlx_load_safetensors failed with code %d", int(code))
+		return nil, mlxError("mlx_load_safetensors", int(code))
 	}
 	return &SafeTensors{arrays: arrays, metadata: metadata}, nil
 }
@@ -797,8 +866,12 @@ func SaveSafetensors(file string, arrays map[string]Array, metadata map[string]s
 	cfile := C.CString(file)
 	defer C.free(unsafe.Pointer(cfile))
 
+	clearMLXError()
 	carrays := C.mlx_map_string_to_array_new()
+	arraysErr := mlxEmptyHandleError("mlx_map_string_to_array_new", "map")
+	clearMLXError()
 	cmetadata := C.mlx_map_string_to_string_new()
+	metadataErr := mlxEmptyHandleError("mlx_map_string_to_string_new", "map")
 	if carrays.ctx == nil || cmetadata.ctx == nil {
 		if carrays.ctx != nil {
 			C.mlx_map_string_to_array_free(carrays)
@@ -806,7 +879,10 @@ func SaveSafetensors(file string, arrays map[string]Array, metadata map[string]s
 		if cmetadata.ctx != nil {
 			C.mlx_map_string_to_string_free(cmetadata)
 		}
-		return errors.New("mlxgo: failed to allocate safetensors maps")
+		if carrays.ctx == nil {
+			return arraysErr
+		}
+		return metadataErr
 	}
 	defer C.mlx_map_string_to_array_free(carrays)
 	defer C.mlx_map_string_to_string_free(cmetadata)
@@ -817,34 +893,38 @@ func SaveSafetensors(file string, arrays map[string]Array, metadata map[string]s
 			return fmt.Errorf("mlxgo: safetensors array %q: %w", key, err)
 		}
 		ckey := C.CString(key)
+		clearMLXError()
 		code := C.mlx_map_string_to_array_insert(carrays, ckey, handle)
 		C.free(unsafe.Pointer(ckey))
 		if code != 0 {
-			return fmt.Errorf("mlxgo: safetensors insert array %q failed with code %d", key, int(code))
+			return fmt.Errorf("mlxgo: safetensors insert array %q: %w", key, mlxError("mlx_map_string_to_array_insert", int(code)))
 		}
 	}
 
 	for key, value := range metadata {
 		ckey := C.CString(key)
 		cvalue := C.CString(value)
+		clearMLXError()
 		code := C.mlx_map_string_to_string_insert(cmetadata, ckey, cvalue)
 		C.free(unsafe.Pointer(ckey))
 		C.free(unsafe.Pointer(cvalue))
 		if code != 0 {
-			return fmt.Errorf("mlxgo: safetensors insert metadata %q failed with code %d", key, int(code))
+			return fmt.Errorf("mlxgo: safetensors insert metadata %q: %w", key, mlxError("mlx_map_string_to_string_insert", int(code)))
 		}
 	}
 
+	clearMLXError()
 	if code := C.mlx_save_safetensors(cfile, carrays, cmetadata); code != 0 {
-		return fmt.Errorf("mlxgo: mlx_save_safetensors failed with code %d", int(code))
+		return mlxError("mlx_save_safetensors", int(code))
 	}
 	return nil
 }
 
 // RandomSeed sets MLX's global random seed.
 func RandomSeed(seed uint64) error {
+	clearMLXError()
 	if code := C.mlx_random_seed(C.uint64_t(seed)); code != 0 {
-		return fmt.Errorf("mlxgo: mlx_random_seed failed with code %d", int(code))
+		return mlxError("mlx_random_seed", int(code))
 	}
 	return nil
 }
@@ -852,9 +932,10 @@ func RandomSeed(seed uint64) error {
 // RandomKey creates a random key array from seed.
 func RandomKey(seed uint64) (Array, error) {
 	out := newArray(C.mlx_array_new())
+	clearMLXError()
 	if code := C.mlx_random_key(out.outHandle(), C.uint64_t(seed)); code != 0 {
 		_ = out.Close()
-		return Array{}, fmt.Errorf("mlxgo: mlx_random_key failed with code %d", int(code))
+		return Array{}, mlxError("mlx_random_key", int(code))
 	}
 	return out, nil
 }
@@ -865,13 +946,17 @@ func RandomNormal(shape []int, dtype DType, loc, scale float32) (Array, error) {
 	if err != nil {
 		return Array{}, err
 	}
-	stream := C.mlx_default_cpu_stream_new()
-	defer C.mlx_stream_free(stream)
+	stream, done, err := currentStream()
+	if err != nil {
+		return Array{}, err
+	}
+	defer done()
 
 	out := newArray(C.mlx_array_new())
-	if code := C.mlx_random_normal(out.outHandle(), (*C.int)(unsafe.Pointer(&cshape[0])), C.size_t(len(cshape)), cdtype, C.float(loc), C.float(scale), C.mlx_array{}, stream); code != 0 {
+	clearMLXError()
+	if code := C.mlx_random_normal(out.outHandle(), cIntPtr(cshape), C.size_t(len(cshape)), cdtype, C.float(loc), C.float(scale), C.mlx_array{}, stream); code != 0 {
 		_ = out.Close()
-		return Array{}, fmt.Errorf("mlxgo: mlx_random_normal failed with code %d", int(code))
+		return Array{}, mlxError("mlx_random_normal", int(code))
 	}
 	return out, nil
 }
@@ -901,13 +986,17 @@ func RandomUniform(shape []int, dtype DType, low, high float32) (Array, error) {
 		return Array{}, err
 	}
 
-	stream := C.mlx_default_cpu_stream_new()
-	defer C.mlx_stream_free(stream)
+	stream, done, err := currentStream()
+	if err != nil {
+		return Array{}, err
+	}
+	defer done()
 
 	out := newArray(C.mlx_array_new())
-	if code := C.mlx_random_uniform(out.outHandle(), lowHandle, highHandle, (*C.int)(unsafe.Pointer(&cshape[0])), C.size_t(len(cshape)), cdtype, C.mlx_array{}, stream); code != 0 {
+	clearMLXError()
+	if code := C.mlx_random_uniform(out.outHandle(), lowHandle, highHandle, cIntPtr(cshape), C.size_t(len(cshape)), cdtype, C.mlx_array{}, stream); code != 0 {
 		_ = out.Close()
-		return Array{}, fmt.Errorf("mlxgo: mlx_random_uniform failed with code %d", int(code))
+		return Array{}, mlxError("mlx_random_uniform", int(code))
 	}
 	return out, nil
 }
@@ -937,13 +1026,17 @@ func RandomRandint(shape []int, dtype DType, low, high int) (Array, error) {
 		return Array{}, err
 	}
 
-	stream := C.mlx_default_cpu_stream_new()
-	defer C.mlx_stream_free(stream)
+	stream, done, err := currentStream()
+	if err != nil {
+		return Array{}, err
+	}
+	defer done()
 
 	out := newArray(C.mlx_array_new())
-	if code := C.mlx_random_randint(out.outHandle(), lowHandle, highHandle, (*C.int)(unsafe.Pointer(&cshape[0])), C.size_t(len(cshape)), cdtype, C.mlx_array{}, stream); code != 0 {
+	clearMLXError()
+	if code := C.mlx_random_randint(out.outHandle(), lowHandle, highHandle, cIntPtr(cshape), C.size_t(len(cshape)), cdtype, C.mlx_array{}, stream); code != 0 {
 		_ = out.Close()
-		return Array{}, fmt.Errorf("mlxgo: mlx_random_randint failed with code %d", int(code))
+		return Array{}, mlxError("mlx_random_randint", int(code))
 	}
 	return out, nil
 }
@@ -964,13 +1057,17 @@ func RandomBernoulli(shape []int, p float32) (Array, error) {
 		return Array{}, err
 	}
 
-	stream := C.mlx_default_cpu_stream_new()
-	defer C.mlx_stream_free(stream)
+	stream, done, err := currentStream()
+	if err != nil {
+		return Array{}, err
+	}
+	defer done()
 
 	out := newArray(C.mlx_array_new())
-	if code := C.mlx_random_bernoulli(out.outHandle(), pHandle, (*C.int)(unsafe.Pointer(&cshape[0])), C.size_t(len(cshape)), C.mlx_array{}, stream); code != 0 {
+	clearMLXError()
+	if code := C.mlx_random_bernoulli(out.outHandle(), pHandle, cIntPtr(cshape), C.size_t(len(cshape)), C.mlx_array{}, stream); code != 0 {
 		_ = out.Close()
-		return Array{}, fmt.Errorf("mlxgo: mlx_random_bernoulli failed with code %d", int(code))
+		return Array{}, mlxError("mlx_random_bernoulli", int(code))
 	}
 	return out, nil
 }
@@ -989,14 +1086,16 @@ func (s *SafeTensors) Close() error {
 	}
 	var first error
 	if s.arrays.ctx != nil {
+		clearMLXError()
 		if code := C.mlx_map_string_to_array_free(s.arrays); code != 0 {
-			first = fmt.Errorf("mlxgo: mlx_map_string_to_array_free failed with code %d", int(code))
+			first = mlxError("mlx_map_string_to_array_free", int(code))
 		}
 		s.arrays.ctx = nil
 	}
 	if s.metadata.ctx != nil {
+		clearMLXError()
 		if code := C.mlx_map_string_to_string_free(s.metadata); code != 0 && first == nil {
-			first = fmt.Errorf("mlxgo: mlx_map_string_to_string_free failed with code %d", int(code))
+			first = mlxError("mlx_map_string_to_string_free", int(code))
 		}
 		s.metadata.ctx = nil
 	}
@@ -1016,8 +1115,9 @@ func (s *SafeTensors) Get(name string) (Array, error) {
 	defer C.free(unsafe.Pointer(cname))
 
 	var value C.mlx_array
+	clearMLXError()
 	if code := C.mlx_map_string_to_array_get(&value, s.arrays, cname); code != 0 {
-		return Array{}, fmt.Errorf("mlxgo: safetensors array %q not found", name)
+		return Array{}, fmt.Errorf("mlxgo: safetensors array %q: %w", name, mlxError("mlx_map_string_to_array_get", int(code)))
 	}
 	return checkedArray(value, "mlx_map_string_to_array_get")
 }
@@ -1034,22 +1134,48 @@ func (s *SafeTensors) Metadata(name string) (string, bool, error) {
 	defer C.free(unsafe.Pointer(cname))
 
 	var value *C.char
-	if code := C.mlx_map_string_to_string_get((**C.char)(unsafe.Pointer(&value)), s.metadata, cname); code != 0 || value == nil {
+	clearMLXError()
+	if code := C.mlx_map_string_to_string_get((**C.char)(unsafe.Pointer(&value)), s.metadata, cname); code != 0 {
+		return "", false, fmt.Errorf("mlxgo: safetensors metadata %q: %w", name, mlxError("mlx_map_string_to_string_get", int(code)))
+	}
+	if value == nil {
 		return "", false, nil
 	}
 	return C.GoString(value), true, nil
 }
 
-// SetDefaultCPU switches MLX's default device to CPU index 0.
+// SetDefaultCPU switches MLX's default device and stream to CPU index 0.
 func SetDefaultCPU() error {
-	dev := C.mlx_device_new_type(C.MLX_CPU, 0)
-	if dev.ctx == nil {
-		return errors.New("mlxgo: failed to create CPU device")
-	}
-	defer C.mlx_device_free(dev)
+	return SetDefaultDevice(DeviceCPU, 0)
+}
 
-	if code := C.mlx_set_default_device(dev); code != 0 {
-		return fmt.Errorf("mlxgo: mlx_set_default_device failed with code %d", int(code))
+// SetDefaultGPU switches MLX's default device and stream to GPU index 0.
+func SetDefaultGPU() error {
+	return SetDefaultDevice(DeviceGPU, 0)
+}
+
+// SetDefaultDevice switches the default MLX device and stream used by wrapper
+// operations.
+func SetDefaultDevice(deviceType DeviceType, index int) error {
+	if index < 0 {
+		return fmt.Errorf("mlxgo: device index must be non-negative, got %d", index)
+	}
+
+	defaultStreamState.Lock()
+	defer defaultStreamState.Unlock()
+
+	stream, err := newDefaultStream(deviceType, index)
+	if err != nil {
+		return err
+	}
+
+	oldStream := defaultStreamState.stream
+	defaultStreamState.deviceType = deviceType
+	defaultStreamState.index = index
+	defaultStreamState.stream = stream
+	if oldStream.ctx != nil {
+		clearMLXError()
+		_ = C.mlx_stream_free(oldStream)
 	}
 	return nil
 }
@@ -1059,19 +1185,19 @@ func (a *Array) Close() error {
 	if a == nil {
 		return nil
 	}
-	if a.state == nil || a.state.closed || a.state.handle.ctx == nil {
+	if a.state == nil || a.state.handle.ctx == nil {
+		return nil
+	}
+	if !a.state.closed.CompareAndSwap(false, true) {
 		return nil
 	}
 	if !a.state.owned {
-		a.state.handle.ctx = nil
-		a.state.closed = true
 		return nil
 	}
+	clearMLXError()
 	if code := C.mlx_array_free(a.state.handle); code != 0 {
-		return fmt.Errorf("mlxgo: mlx_array_free failed with code %d", int(code))
+		return mlxError("mlx_array_free", int(code))
 	}
-	a.state.handle.ctx = nil
-	a.state.closed = true
 	return nil
 }
 
@@ -1081,8 +1207,9 @@ func (a Array) Eval() error {
 	if err != nil {
 		return err
 	}
+	clearMLXError()
 	if code := C.mlx_array_eval(handle); code != 0 {
-		return fmt.Errorf("mlxgo: mlx_array_eval failed with code %d", int(code))
+		return mlxError("mlx_array_eval", int(code))
 	}
 	return nil
 }
@@ -1110,7 +1237,7 @@ func (a Array) DType() (DType, error) {
 	if err != nil {
 		return Float32, err
 	}
-	return goDType(C.mlx_array_dtype(handle)), nil
+	return goDType(C.mlx_array_dtype(handle))
 }
 
 // Size returns the number of elements in the array.
@@ -1124,15 +1251,24 @@ func (a Array) Size() int {
 
 // Float32Data evaluates the array and copies its float32 contents into Go.
 func (a Array) Float32Data() ([]float32, error) {
-	if err := a.Eval(); err != nil {
+	contiguous, err := Contiguous(a)
+	if err != nil {
 		return nil, err
 	}
-	if err := a.expectDType(Float32); err != nil {
+	defer contiguous.Close()
+
+	if err := contiguous.Eval(); err != nil {
+		return nil, err
+	}
+	if err := contiguous.expectDType(Float32); err != nil {
 		return nil, err
 	}
 
-	n := a.Size()
-	handle, err := a.handleValue()
+	n := contiguous.Size()
+	if n == 0 {
+		return []float32{}, nil
+	}
+	handle, err := contiguous.handleValue()
 	if err != nil {
 		return nil, err
 	}
@@ -1151,15 +1287,24 @@ func (a Array) Float32Data() ([]float32, error) {
 
 // Float64Data evaluates the array and copies its float64 contents into Go.
 func (a Array) Float64Data() ([]float64, error) {
-	if err := a.Eval(); err != nil {
+	contiguous, err := Contiguous(a)
+	if err != nil {
 		return nil, err
 	}
-	if err := a.expectDType(Float64); err != nil {
+	defer contiguous.Close()
+
+	if err := contiguous.Eval(); err != nil {
+		return nil, err
+	}
+	if err := contiguous.expectDType(Float64); err != nil {
 		return nil, err
 	}
 
-	n := a.Size()
-	handle, err := a.handleValue()
+	n := contiguous.Size()
+	if n == 0 {
+		return []float64{}, nil
+	}
+	handle, err := contiguous.handleValue()
 	if err != nil {
 		return nil, err
 	}
@@ -1178,15 +1323,24 @@ func (a Array) Float64Data() ([]float64, error) {
 
 // Int32Data evaluates the array and copies its int32 contents into Go.
 func (a Array) Int32Data() ([]int32, error) {
-	if err := a.Eval(); err != nil {
+	contiguous, err := Contiguous(a)
+	if err != nil {
 		return nil, err
 	}
-	if err := a.expectDType(Int32); err != nil {
+	defer contiguous.Close()
+
+	if err := contiguous.Eval(); err != nil {
+		return nil, err
+	}
+	if err := contiguous.expectDType(Int32); err != nil {
 		return nil, err
 	}
 
-	n := a.Size()
-	handle, err := a.handleValue()
+	n := contiguous.Size()
+	if n == 0 {
+		return []int32{}, nil
+	}
+	handle, err := contiguous.handleValue()
 	if err != nil {
 		return nil, err
 	}
@@ -1205,15 +1359,24 @@ func (a Array) Int32Data() ([]int32, error) {
 
 // Int64Data evaluates the array and copies its int64 contents into Go.
 func (a Array) Int64Data() ([]int64, error) {
-	if err := a.Eval(); err != nil {
+	contiguous, err := Contiguous(a)
+	if err != nil {
 		return nil, err
 	}
-	if err := a.expectDType(Int64); err != nil {
+	defer contiguous.Close()
+
+	if err := contiguous.Eval(); err != nil {
+		return nil, err
+	}
+	if err := contiguous.expectDType(Int64); err != nil {
 		return nil, err
 	}
 
-	n := a.Size()
-	handle, err := a.handleValue()
+	n := contiguous.Size()
+	if n == 0 {
+		return []int64{}, nil
+	}
+	handle, err := contiguous.handleValue()
 	if err != nil {
 		return nil, err
 	}
@@ -1232,15 +1395,24 @@ func (a Array) Int64Data() ([]int64, error) {
 
 // UInt32Data evaluates the array and copies its uint32 contents into Go.
 func (a Array) UInt32Data() ([]uint32, error) {
-	if err := a.Eval(); err != nil {
+	contiguous, err := Contiguous(a)
+	if err != nil {
 		return nil, err
 	}
-	if err := a.expectDType(UInt32); err != nil {
+	defer contiguous.Close()
+
+	if err := contiguous.Eval(); err != nil {
+		return nil, err
+	}
+	if err := contiguous.expectDType(UInt32); err != nil {
 		return nil, err
 	}
 
-	n := a.Size()
-	handle, err := a.handleValue()
+	n := contiguous.Size()
+	if n == 0 {
+		return []uint32{}, nil
+	}
+	handle, err := contiguous.handleValue()
 	if err != nil {
 		return nil, err
 	}
@@ -1259,15 +1431,24 @@ func (a Array) UInt32Data() ([]uint32, error) {
 
 // UInt64Data evaluates the array and copies its uint64 contents into Go.
 func (a Array) UInt64Data() ([]uint64, error) {
-	if err := a.Eval(); err != nil {
+	contiguous, err := Contiguous(a)
+	if err != nil {
 		return nil, err
 	}
-	if err := a.expectDType(UInt64); err != nil {
+	defer contiguous.Close()
+
+	if err := contiguous.Eval(); err != nil {
+		return nil, err
+	}
+	if err := contiguous.expectDType(UInt64); err != nil {
 		return nil, err
 	}
 
-	n := a.Size()
-	handle, err := a.handleValue()
+	n := contiguous.Size()
+	if n == 0 {
+		return []uint64{}, nil
+	}
+	handle, err := contiguous.handleValue()
 	if err != nil {
 		return nil, err
 	}
@@ -1286,15 +1467,24 @@ func (a Array) UInt64Data() ([]uint64, error) {
 
 // BoolData evaluates the array and copies its bool contents into Go.
 func (a Array) BoolData() ([]bool, error) {
-	if err := a.Eval(); err != nil {
+	contiguous, err := Contiguous(a)
+	if err != nil {
 		return nil, err
 	}
-	if err := a.expectDType(Bool); err != nil {
+	defer contiguous.Close()
+
+	if err := contiguous.Eval(); err != nil {
+		return nil, err
+	}
+	if err := contiguous.expectDType(Bool); err != nil {
 		return nil, err
 	}
 
-	n := a.Size()
-	handle, err := a.handleValue()
+	n := contiguous.Size()
+	if n == 0 {
+		return []bool{}, nil
+	}
+	handle, err := contiguous.handleValue()
 	if err != nil {
 		return nil, err
 	}
@@ -1321,8 +1511,9 @@ func (a Array) String() string {
 	str := C.mlx_string_new()
 	defer C.mlx_string_free(str)
 
+	clearMLXError()
 	if code := C.mlx_array_tostring(&str, handle); code != 0 {
-		return fmt.Sprintf("<mlx_array_tostring failed: %d>", int(code))
+		return fmt.Sprintf("<%v>", mlxError("mlx_array_tostring", int(code)))
 	}
 
 	return C.GoString(C.mlx_string_data(str))
@@ -1338,13 +1529,17 @@ func shapeOp(shape []int, dtype DType, name string, op func(*C.mlx_array, *C.int
 		return Array{}, err
 	}
 
-	stream := C.mlx_default_cpu_stream_new()
-	defer C.mlx_stream_free(stream)
+	stream, done, err := currentStream()
+	if err != nil {
+		return Array{}, err
+	}
+	defer done()
 
 	out := newArray(C.mlx_array_new())
-	if code := op(out.outHandle(), (*C.int)(unsafe.Pointer(&cshape[0])), C.size_t(len(cshape)), cdtype, stream); code != 0 {
+	clearMLXError()
+	if code := op(out.outHandle(), cIntPtr(cshape), C.size_t(len(cshape)), cdtype, stream); code != 0 {
 		_ = out.Close()
-		return Array{}, fmt.Errorf("mlxgo: %s failed with code %d", name, int(code))
+		return Array{}, mlxError(name, int(code))
 	}
 	return out, nil
 }
@@ -1375,31 +1570,34 @@ func newData(data unsafe.Pointer, dataLen int, shape []int, dtype DType) (Array,
 		return Array{}, err
 	}
 
-	return checkedArray(
-		C.mlx_array_new_data(data, (*C.int)(unsafe.Pointer(&cshape[0])), C.int(len(cshape)), cdtype),
-		"mlx_array_new_data",
-	)
+	clearMLXError()
+	return checkedArray(C.mlx_array_new_data(data, cIntPtr(cshape), C.int(len(cshape)), cdtype), "mlx_array_new_data")
 }
 
 func checkedArray(handle C.mlx_array, name string) (Array, error) {
 	if handle.ctx == nil {
-		return Array{}, fmt.Errorf("mlxgo: %s returned an empty array", name)
+		return Array{}, mlxEmptyHandleError(name, "array")
 	}
 	return newArray(handle), nil
 }
 
 func unaryOp(a Array, name string, op func(*C.mlx_array, C.mlx_array, C.mlx_stream) C.int) (Array, error) {
-	stream := C.mlx_default_cpu_stream_new()
-	defer C.mlx_stream_free(stream)
-
-	out := newArray(C.mlx_array_new())
 	input, err := a.handleValue()
 	if err != nil {
 		return Array{}, err
 	}
+
+	stream, done, err := currentStream()
+	if err != nil {
+		return Array{}, err
+	}
+	defer done()
+
+	out := newArray(C.mlx_array_new())
+	clearMLXError()
 	if code := op(out.outHandle(), input, stream); code != 0 {
 		_ = out.Close()
-		return Array{}, fmt.Errorf("mlxgo: %s failed with code %d", name, int(code))
+		return Array{}, mlxError(name, int(code))
 	}
 	return out, nil
 }
@@ -1414,13 +1612,17 @@ func binaryOp(a, b Array, name string, op func(*C.mlx_array, C.mlx_array, C.mlx_
 		return Array{}, err
 	}
 
-	stream := C.mlx_default_cpu_stream_new()
-	defer C.mlx_stream_free(stream)
+	stream, done, err := currentStream()
+	if err != nil {
+		return Array{}, err
+	}
+	defer done()
 
 	out := newArray(C.mlx_array_new())
+	clearMLXError()
 	if code := op(out.outHandle(), left, right, stream); code != 0 {
 		_ = out.Close()
-		return Array{}, fmt.Errorf("mlxgo: %s failed with code %d", name, int(code))
+		return Array{}, mlxError(name, int(code))
 	}
 	return out, nil
 }
@@ -1432,15 +1634,64 @@ func vectorOp(arrays []Array, name string, op func(*C.mlx_array, C.mlx_vector_ar
 	}
 	defer C.mlx_vector_array_free(vec)
 
-	stream := C.mlx_default_cpu_stream_new()
-	defer C.mlx_stream_free(stream)
+	stream, done, err := currentStream()
+	if err != nil {
+		return Array{}, err
+	}
+	defer done()
 
 	out := newArray(C.mlx_array_new())
+	clearMLXError()
 	if code := op(out.outHandle(), vec, stream); code != 0 {
 		_ = out.Close()
-		return Array{}, fmt.Errorf("mlxgo: %s failed with code %d", name, int(code))
+		return Array{}, mlxError(name, int(code))
 	}
 	return out, nil
+}
+
+func currentStream() (C.mlx_stream, func(), error) {
+	defaultStreamState.Lock()
+	if defaultStreamState.stream.ctx == nil {
+		stream, err := newDefaultStream(defaultStreamState.deviceType, defaultStreamState.index)
+		if err != nil {
+			defaultStreamState.Unlock()
+			return C.mlx_stream{}, nil, err
+		}
+		defaultStreamState.stream = stream
+	}
+	return defaultStreamState.stream, defaultStreamState.Unlock, nil
+}
+
+func newDefaultStream(deviceType DeviceType, index int) (C.mlx_stream, error) {
+	cdeviceType, err := cDeviceType(deviceType)
+	if err != nil {
+		return C.mlx_stream{}, err
+	}
+
+	clearMLXError()
+	dev := C.mlx_device_new_type(cdeviceType, C.int(index))
+	if dev.ctx == nil {
+		return C.mlx_stream{}, mlxEmptyHandleError("mlx_device_new_type", fmt.Sprintf("%s device %d", deviceType, index))
+	}
+	defer C.mlx_device_free(dev)
+
+	clearMLXError()
+	if code := C.mlx_set_default_device(dev); code != 0 {
+		return C.mlx_stream{}, mlxError("mlx_set_default_device", int(code))
+	}
+
+	clearMLXError()
+	stream := C.mlx_stream_new_device(dev)
+	if stream.ctx == nil {
+		return C.mlx_stream{}, mlxEmptyHandleError("mlx_stream_new_device", fmt.Sprintf("%s stream %d", deviceType, index))
+	}
+
+	clearMLXError()
+	if code := C.mlx_set_default_stream(stream); code != 0 {
+		_ = C.mlx_stream_free(stream)
+		return C.mlx_stream{}, mlxError("mlx_set_default_stream", int(code))
+	}
+	return stream, nil
 }
 
 func cArrayVector(arrays []Array) (C.mlx_vector_array, error) {
@@ -1449,23 +1700,42 @@ func cArrayVector(arrays []Array) (C.mlx_vector_array, error) {
 		return C.mlx_vector_array{}, err
 	}
 
+	clearMLXError()
 	vec := C.mlx_vector_array_new_data((*C.mlx_array)(unsafe.Pointer(&handles[0])), C.size_t(len(handles)))
 	if vec.ctx == nil {
-		return C.mlx_vector_array{}, errors.New("mlxgo: failed to allocate MLX array vector")
+		return C.mlx_vector_array{}, mlxEmptyHandleError("mlx_vector_array_new_data", "array vector")
 	}
 	return vec, nil
 }
 
 func setArrayVector(vec *C.mlx_vector_array, arrays []Array) error {
-	if vec == nil || (*vec).ctx == nil {
+	if vec == nil {
 		return errors.New("mlxgo: vector is empty")
+	}
+	allocated := false
+	if (*vec).ctx == nil {
+		clearMLXError()
+		*vec = C.mlx_vector_array_new()
+		if (*vec).ctx == nil {
+			return mlxEmptyHandleError("mlx_vector_array_new", "array vector")
+		}
+		allocated = true
 	}
 	handles, err := cArrayHandles(arrays)
 	if err != nil {
+		if allocated {
+			_ = C.mlx_vector_array_free(*vec)
+			*vec = C.mlx_vector_array{}
+		}
 		return err
 	}
+	clearMLXError()
 	if code := C.mlx_vector_array_set_data(vec, (*C.mlx_array)(unsafe.Pointer(&handles[0])), C.size_t(len(handles))); code != 0 {
-		return fmt.Errorf("mlxgo: mlx_vector_array_set_data failed with code %d", int(code))
+		if allocated {
+			_ = C.mlx_vector_array_free(*vec)
+			*vec = C.mlx_vector_array{}
+		}
+		return mlxError("mlx_vector_array_set_data", int(code))
 	}
 	return nil
 }
@@ -1487,7 +1757,7 @@ func cArrayHandles(arrays []Array) ([]C.mlx_array, error) {
 }
 
 func (a Array) handleValue() (C.mlx_array, error) {
-	if a.state == nil || a.state.closed || a.state.handle.ctx == nil {
+	if a.state == nil || a.state.closed.Load() || a.state.handle.ctx == nil {
 		return C.mlx_array{}, errors.New("mlxgo: array is closed")
 	}
 	return a.state.handle, nil
@@ -1517,14 +1787,10 @@ func (a Array) outHandle() *C.mlx_array {
 }
 
 func cDataShape(shape []int) ([]C.int, error) {
-	if len(shape) == 0 {
-		return nil, errors.New("mlxgo: shape must not be empty")
-	}
-
 	cshape := make([]C.int, len(shape))
 	for i, dim := range shape {
-		if dim <= 0 {
-			return nil, fmt.Errorf("mlxgo: shape dimension %d must be positive", i)
+		if dim < 0 {
+			return nil, fmt.Errorf("mlxgo: shape dimension %d must be non-negative", i)
 		}
 		cshape[i] = C.int(dim)
 	}
@@ -1532,10 +1798,6 @@ func cDataShape(shape []int) ([]C.int, error) {
 }
 
 func cReshapeShape(shape []int) ([]C.int, error) {
-	if len(shape) == 0 {
-		return nil, errors.New("mlxgo: reshape shape must not be empty")
-	}
-
 	inferred := 0
 	cshape := make([]C.int, len(shape))
 	for i, dim := range shape {
@@ -1545,12 +1807,19 @@ func cReshapeShape(shape []int) ([]C.int, error) {
 			if inferred > 1 {
 				return nil, errors.New("mlxgo: reshape shape can contain at most one inferred dimension")
 			}
-		case dim <= 0:
-			return nil, fmt.Errorf("mlxgo: reshape dimension %d must be positive or -1", i)
+		case dim < 0:
+			return nil, fmt.Errorf("mlxgo: reshape dimension %d must be non-negative or -1", i)
 		}
 		cshape[i] = C.int(dim)
 	}
 	return cshape, nil
+}
+
+func cIntPtr(values []C.int) *C.int {
+	if len(values) == 0 {
+		return nil
+	}
+	return (*C.int)(unsafe.Pointer(&values[0]))
 }
 
 func cInts(values []int) []C.int {
@@ -1567,6 +1836,28 @@ func elementCount(shape []int) int {
 		total *= dim
 	}
 	return total
+}
+
+func (d DeviceType) String() string {
+	switch d {
+	case DeviceGPU:
+		return "gpu"
+	case DeviceCPU:
+		return "cpu"
+	default:
+		return "unknown"
+	}
+}
+
+func cDeviceType(deviceType DeviceType) (C.mlx_device_type, error) {
+	switch deviceType {
+	case DeviceGPU:
+		return C.MLX_GPU, nil
+	case DeviceCPU:
+		return C.MLX_CPU, nil
+	default:
+		return C.MLX_CPU, fmt.Errorf("mlxgo: unsupported device type %d", deviceType)
+	}
 }
 
 func cDType(dtype DType) (C.mlx_dtype, error) {
@@ -1604,37 +1895,37 @@ func cDType(dtype DType) (C.mlx_dtype, error) {
 	}
 }
 
-func goDType(dtype C.mlx_dtype) DType {
+func goDType(dtype C.mlx_dtype) (DType, error) {
 	switch dtype {
 	case C.MLX_BOOL:
-		return Bool
+		return Bool, nil
 	case C.MLX_UINT8:
-		return UInt8
+		return UInt8, nil
 	case C.MLX_UINT16:
-		return UInt16
+		return UInt16, nil
 	case C.MLX_UINT32:
-		return UInt32
+		return UInt32, nil
 	case C.MLX_UINT64:
-		return UInt64
+		return UInt64, nil
 	case C.MLX_INT8:
-		return Int8
+		return Int8, nil
 	case C.MLX_INT16:
-		return Int16
+		return Int16, nil
 	case C.MLX_INT32:
-		return Int32
+		return Int32, nil
 	case C.MLX_INT64:
-		return Int64
+		return Int64, nil
 	case C.MLX_FLOAT16:
-		return Float16
+		return Float16, nil
 	case C.MLX_FLOAT32:
-		return Float32
+		return Float32, nil
 	case C.MLX_FLOAT64:
-		return Float64
+		return Float64, nil
 	case C.MLX_BFLOAT16:
-		return BFloat16
+		return BFloat16, nil
 	case C.MLX_COMPLEX64:
-		return Complex64
+		return Complex64, nil
 	default:
-		return DType(dtype)
+		return Float32, fmt.Errorf("mlxgo: unsupported MLX dtype %d", int(dtype))
 	}
 }

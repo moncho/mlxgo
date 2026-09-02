@@ -46,6 +46,9 @@ CGO_ENABLED=1 go run -tags mlx ./cmd/smoke
 Expected behavior: the program creates two MLX float32 arrays, adds them, forces
 evaluation, and prints the resulting Go slice.
 
+Operations use GPU index 0 by default. Call `SetDefaultCPU` before creating or
+running arrays when you want CPU execution instead.
+
 Run the linear-regression loss example:
 
 ```sh
@@ -108,6 +111,10 @@ The same commands are available through `make`:
 make test
 make test-native
 make test-runtime
+make vet
+make vet-native
+make test-race
+make test-race-native
 make smoke
 make linear
 make mlp
@@ -130,9 +137,10 @@ make autograd-linear
 - Matrix/reduction ops: `Matmul`, `Sum`, `SumAxis`, `SumAxes`, `Mean`,
   `MeanAxis`, `MeanAxes`, `LogSumExp`, `LogSumExpAxis`, `LogSumExpAxes`,
   `AddMM`
+- Device/stream control: `SetDefaultGPU`, `SetDefaultCPU`, `SetDefaultDevice`
 - Shape/type ops: `Reshape`, `Transpose`, `TransposeAxes`, `BroadcastTo`,
   `ExpandDims`, `ExpandDimsAxes`, `Squeeze`, `SqueezeAxis`, `SqueezeAxes`,
-  `Flatten`, `AsType`
+  `Flatten`, `AsType`, `Contiguous`
 - Model ops: `Softmax`, `SoftmaxAxis`, `SoftmaxAxes`, `Argmax`, `ArgmaxAxis`,
   `Argmin`, `ArgminAxis`, `Equal`, `Greater`, `GreaterEqual`, `Less`,
   `LessEqual`, `Where`, `Take`, `TakeAxis`, `TakeAlongAxis`, `Gather`,
@@ -150,9 +158,14 @@ make autograd-linear
 
 - MLX computation is lazy. Call `Eval` or a data-copy method such as
   `Float32Data` before reading results.
-- Call `SetDefaultCPU` when you want CPU execution. This does not bypass MLX's
-  Metal initialization requirement in sandboxed processes that cannot enumerate
-  a Metal device.
+- The wrapper defaults to GPU index 0. Call `SetDefaultCPU` when you want CPU
+  execution. This does not bypass MLX's Metal initialization requirement in
+  sandboxed processes that cannot enumerate a Metal device.
+- Data-copy methods call `Contiguous` internally before touching MLX's raw data
+  pointers, so transposed and broadcasted views copy back correctly.
+- The native build installs an MLX error handler during package initialization.
+  MLX operation failures should return Go errors with MLX's diagnostic text
+  instead of aborting the process.
 - Close arrays explicitly with `defer arr.Close()` when you allocate them.
   Copies share close state, so closing one copy prevents later use through other
   copies.
@@ -162,8 +175,9 @@ make autograd-linear
 - Keep Go slices alive until after cgo calls return. The current constructors use
   `mlx_array_new_data`, which copies the input buffer.
 - `NewValueAndGrad` wraps MLX's closure-based autograd. Callback inputs are
-  borrowed arrays. Callback outputs are transferred to MLX, so return freshly
-  created arrays rather than arrays you intend to keep using after the callback.
+  temporary handles managed by the wrapper. Callback outputs are transferred to
+  MLX, so return freshly created arrays rather than arrays you intend to keep
+  using after the callback.
 - Expand the wrapper a few operations at a time. MLX C's API is broad, and a
   typed Go surface is easier to maintain than a generated one-to-one binding at
   the start.

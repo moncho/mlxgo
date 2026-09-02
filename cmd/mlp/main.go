@@ -10,10 +10,6 @@ import (
 )
 
 func main() {
-	if err := mlx.SetDefaultCPU(); err != nil {
-		log.Fatal(err)
-	}
-
 	x := must(mlx.NewFloat32([]float32{0.7, -1.2, 0.3, 2.0}, []int{1, 4}))
 	defer x.Close()
 

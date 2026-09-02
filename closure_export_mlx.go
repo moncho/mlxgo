@@ -22,7 +22,7 @@ func mlxgoClosureApply(res *C.mlx_vector_array, inputs C.mlx_vector_array, paylo
 		return 1
 	}
 
-	goInputs, err := vectorToArrays(inputs, false)
+	goInputs, err := vectorToArrays(inputs, true)
 	if err != nil {
 		state.setErr(err)
 		return 1

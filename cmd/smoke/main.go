@@ -10,10 +10,6 @@ import (
 )
 
 func main() {
-	if err := mlx.SetDefaultCPU(); err != nil {
-		log.Fatal(err)
-	}
-
 	a, err := mlx.NewFloat32([]float32{1, 2, 3, 4}, []int{2, 2})
 	if err != nil {
 		log.Fatal(err)
