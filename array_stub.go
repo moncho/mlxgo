@@ -408,6 +408,13 @@ func SetDefaultDevice(_ DeviceType, _ int) error {
 	return errBuiltWithoutMLX
 }
 
+func Batch(fn func() error) error {
+	if fn == nil {
+		return errors.New("mlxgo: batch function must not be nil")
+	}
+	return fn()
+}
+
 func (d DeviceType) String() string {
 	switch d {
 	case DeviceGPU:

@@ -138,7 +138,8 @@ make autograd-linear
 - Matrix/reduction ops: `Matmul`, `Sum`, `SumAxis`, `SumAxes`, `Mean`,
   `MeanAxis`, `MeanAxes`, `LogSumExp`, `LogSumExpAxis`, `LogSumExpAxes`,
   `AddMM`
-- Device/stream control: `SetDefaultGPU`, `SetDefaultCPU`, `SetDefaultDevice`
+- Device/stream control: `SetDefaultGPU`, `SetDefaultCPU`, `SetDefaultDevice`,
+  `Batch`
 - Shape/type ops: `Reshape`, `Transpose`, `TransposeAxes`, `BroadcastTo`,
   `ExpandDims`, `ExpandDimsAxes`, `Squeeze`, `SqueezeAxis`, `SqueezeAxes`,
   `Flatten`, `AsType`, `Contiguous`
@@ -166,6 +167,8 @@ make autograd-linear
 - Native MLX calls run on a dedicated OS thread. This keeps MLX stream affinity
   stable across lazy graph construction and evaluation, so callers can use
   ordinary Go goroutines; the native calls themselves are serialized.
+- Use `Batch` to amortize dispatcher overhead across a sequence of MLX calls,
+  such as a full training step.
 - Data-copy methods call `Contiguous` internally before touching MLX's raw data
   pointers, so transposed and broadcasted views copy back correctly.
 - The native build installs an MLX error handler during package initialization.
@@ -183,6 +186,9 @@ make autograd-linear
   temporary handles managed by the wrapper. Callback outputs are transferred to
   MLX, so return freshly created arrays rather than arrays you intend to keep
   using after the callback.
+- Closure and value-and-gradient callbacks run on the MLX worker thread. Do not
+  delegate MLX work from a callback to another goroutine, and do not block a
+  callback on anything that needs to call MLX.
 - Expand the wrapper a few operations at a time. MLX C's API is broad, and a
   typed Go surface is easier to maintain than a generated one-to-one binding at
   the start.

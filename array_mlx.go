@@ -13,6 +13,7 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -61,7 +62,9 @@ func NewFloat32(data []float32, shape []int) (Array, error) {
 	if len(data) == 0 {
 		return newData(nil, len(data), shape, Float32)
 	}
-	return newData(unsafe.Pointer(&data[0]), len(data), shape, Float32)
+	arr, err := newData(unsafe.Pointer(&data[0]), len(data), shape, Float32)
+	runtime.KeepAlive(data)
+	return arr, err
 }
 
 // NewFloat64 copies data into a new MLX float64 array with the provided shape.
@@ -69,7 +72,9 @@ func NewFloat64(data []float64, shape []int) (Array, error) {
 	if len(data) == 0 {
 		return newData(nil, len(data), shape, Float64)
 	}
-	return newData(unsafe.Pointer(&data[0]), len(data), shape, Float64)
+	arr, err := newData(unsafe.Pointer(&data[0]), len(data), shape, Float64)
+	runtime.KeepAlive(data)
+	return arr, err
 }
 
 // NewInt32 copies data into a new MLX int32 array with the provided shape.
@@ -77,7 +82,9 @@ func NewInt32(data []int32, shape []int) (Array, error) {
 	if len(data) == 0 {
 		return newData(nil, len(data), shape, Int32)
 	}
-	return newData(unsafe.Pointer(&data[0]), len(data), shape, Int32)
+	arr, err := newData(unsafe.Pointer(&data[0]), len(data), shape, Int32)
+	runtime.KeepAlive(data)
+	return arr, err
 }
 
 // NewInt64 copies data into a new MLX int64 array with the provided shape.
@@ -85,7 +92,9 @@ func NewInt64(data []int64, shape []int) (Array, error) {
 	if len(data) == 0 {
 		return newData(nil, len(data), shape, Int64)
 	}
-	return newData(unsafe.Pointer(&data[0]), len(data), shape, Int64)
+	arr, err := newData(unsafe.Pointer(&data[0]), len(data), shape, Int64)
+	runtime.KeepAlive(data)
+	return arr, err
 }
 
 // NewScalarFloat32 creates a scalar MLX float32 array.
@@ -1155,6 +1164,15 @@ func SetDefaultDevice(deviceType DeviceType, index int) error {
 	return nil
 }
 
+// Batch runs fn on the MLX worker thread. Use it to amortize dispatcher
+// overhead across a sequence of MLX calls, such as one training step.
+func Batch(fn func() error) error {
+	if fn == nil {
+		return errors.New("mlxgo: batch function must not be nil")
+	}
+	return runMLX(fn)
+}
+
 // Close releases the underlying MLX array.
 func (a *Array) Close() error {
 	if a == nil {
@@ -1244,28 +1262,28 @@ func (a Array) Size() int {
 
 // Float32Data evaluates the array and copies its float32 contents into Go.
 func (a Array) Float32Data() ([]float32, error) {
-	contiguous, err := Contiguous(a)
-	if err != nil {
-		return nil, err
-	}
-	defer contiguous.Close()
-
-	if err := contiguous.Eval(); err != nil {
-		return nil, err
-	}
-	if err := contiguous.expectDType(Float32); err != nil {
-		return nil, err
-	}
-
-	n := contiguous.Size()
-	if n == 0 {
-		return []float32{}, nil
-	}
-	handle, err := contiguous.handleValue()
-	if err != nil {
-		return nil, err
-	}
 	return runMLXValue(func() ([]float32, error) {
+		contiguous, err := Contiguous(a)
+		if err != nil {
+			return nil, err
+		}
+		defer contiguous.Close()
+
+		if err := contiguous.Eval(); err != nil {
+			return nil, err
+		}
+		if err := contiguous.expectDType(Float32); err != nil {
+			return nil, err
+		}
+
+		n := contiguous.Size()
+		if n == 0 {
+			return []float32{}, nil
+		}
+		handle, err := contiguous.handleValue()
+		if err != nil {
+			return nil, err
+		}
 		ptr := C.mlx_array_data_float32(handle)
 		if ptr == nil {
 			return nil, errors.New("mlxgo: MLX did not return materialized float32 data")
@@ -1282,28 +1300,28 @@ func (a Array) Float32Data() ([]float32, error) {
 
 // Float64Data evaluates the array and copies its float64 contents into Go.
 func (a Array) Float64Data() ([]float64, error) {
-	contiguous, err := Contiguous(a)
-	if err != nil {
-		return nil, err
-	}
-	defer contiguous.Close()
-
-	if err := contiguous.Eval(); err != nil {
-		return nil, err
-	}
-	if err := contiguous.expectDType(Float64); err != nil {
-		return nil, err
-	}
-
-	n := contiguous.Size()
-	if n == 0 {
-		return []float64{}, nil
-	}
-	handle, err := contiguous.handleValue()
-	if err != nil {
-		return nil, err
-	}
 	return runMLXValue(func() ([]float64, error) {
+		contiguous, err := Contiguous(a)
+		if err != nil {
+			return nil, err
+		}
+		defer contiguous.Close()
+
+		if err := contiguous.Eval(); err != nil {
+			return nil, err
+		}
+		if err := contiguous.expectDType(Float64); err != nil {
+			return nil, err
+		}
+
+		n := contiguous.Size()
+		if n == 0 {
+			return []float64{}, nil
+		}
+		handle, err := contiguous.handleValue()
+		if err != nil {
+			return nil, err
+		}
 		ptr := C.mlx_array_data_float64(handle)
 		if ptr == nil {
 			return nil, errors.New("mlxgo: MLX did not return materialized float64 data")
@@ -1320,28 +1338,28 @@ func (a Array) Float64Data() ([]float64, error) {
 
 // Int32Data evaluates the array and copies its int32 contents into Go.
 func (a Array) Int32Data() ([]int32, error) {
-	contiguous, err := Contiguous(a)
-	if err != nil {
-		return nil, err
-	}
-	defer contiguous.Close()
-
-	if err := contiguous.Eval(); err != nil {
-		return nil, err
-	}
-	if err := contiguous.expectDType(Int32); err != nil {
-		return nil, err
-	}
-
-	n := contiguous.Size()
-	if n == 0 {
-		return []int32{}, nil
-	}
-	handle, err := contiguous.handleValue()
-	if err != nil {
-		return nil, err
-	}
 	return runMLXValue(func() ([]int32, error) {
+		contiguous, err := Contiguous(a)
+		if err != nil {
+			return nil, err
+		}
+		defer contiguous.Close()
+
+		if err := contiguous.Eval(); err != nil {
+			return nil, err
+		}
+		if err := contiguous.expectDType(Int32); err != nil {
+			return nil, err
+		}
+
+		n := contiguous.Size()
+		if n == 0 {
+			return []int32{}, nil
+		}
+		handle, err := contiguous.handleValue()
+		if err != nil {
+			return nil, err
+		}
 		ptr := C.mlx_array_data_int32(handle)
 		if ptr == nil {
 			return nil, errors.New("mlxgo: MLX did not return materialized int32 data")
@@ -1358,28 +1376,28 @@ func (a Array) Int32Data() ([]int32, error) {
 
 // Int64Data evaluates the array and copies its int64 contents into Go.
 func (a Array) Int64Data() ([]int64, error) {
-	contiguous, err := Contiguous(a)
-	if err != nil {
-		return nil, err
-	}
-	defer contiguous.Close()
-
-	if err := contiguous.Eval(); err != nil {
-		return nil, err
-	}
-	if err := contiguous.expectDType(Int64); err != nil {
-		return nil, err
-	}
-
-	n := contiguous.Size()
-	if n == 0 {
-		return []int64{}, nil
-	}
-	handle, err := contiguous.handleValue()
-	if err != nil {
-		return nil, err
-	}
 	return runMLXValue(func() ([]int64, error) {
+		contiguous, err := Contiguous(a)
+		if err != nil {
+			return nil, err
+		}
+		defer contiguous.Close()
+
+		if err := contiguous.Eval(); err != nil {
+			return nil, err
+		}
+		if err := contiguous.expectDType(Int64); err != nil {
+			return nil, err
+		}
+
+		n := contiguous.Size()
+		if n == 0 {
+			return []int64{}, nil
+		}
+		handle, err := contiguous.handleValue()
+		if err != nil {
+			return nil, err
+		}
 		ptr := C.mlx_array_data_int64(handle)
 		if ptr == nil {
 			return nil, errors.New("mlxgo: MLX did not return materialized int64 data")
@@ -1396,28 +1414,28 @@ func (a Array) Int64Data() ([]int64, error) {
 
 // UInt32Data evaluates the array and copies its uint32 contents into Go.
 func (a Array) UInt32Data() ([]uint32, error) {
-	contiguous, err := Contiguous(a)
-	if err != nil {
-		return nil, err
-	}
-	defer contiguous.Close()
-
-	if err := contiguous.Eval(); err != nil {
-		return nil, err
-	}
-	if err := contiguous.expectDType(UInt32); err != nil {
-		return nil, err
-	}
-
-	n := contiguous.Size()
-	if n == 0 {
-		return []uint32{}, nil
-	}
-	handle, err := contiguous.handleValue()
-	if err != nil {
-		return nil, err
-	}
 	return runMLXValue(func() ([]uint32, error) {
+		contiguous, err := Contiguous(a)
+		if err != nil {
+			return nil, err
+		}
+		defer contiguous.Close()
+
+		if err := contiguous.Eval(); err != nil {
+			return nil, err
+		}
+		if err := contiguous.expectDType(UInt32); err != nil {
+			return nil, err
+		}
+
+		n := contiguous.Size()
+		if n == 0 {
+			return []uint32{}, nil
+		}
+		handle, err := contiguous.handleValue()
+		if err != nil {
+			return nil, err
+		}
 		ptr := C.mlx_array_data_uint32(handle)
 		if ptr == nil {
 			return nil, errors.New("mlxgo: MLX did not return materialized uint32 data")
@@ -1434,28 +1452,28 @@ func (a Array) UInt32Data() ([]uint32, error) {
 
 // UInt64Data evaluates the array and copies its uint64 contents into Go.
 func (a Array) UInt64Data() ([]uint64, error) {
-	contiguous, err := Contiguous(a)
-	if err != nil {
-		return nil, err
-	}
-	defer contiguous.Close()
-
-	if err := contiguous.Eval(); err != nil {
-		return nil, err
-	}
-	if err := contiguous.expectDType(UInt64); err != nil {
-		return nil, err
-	}
-
-	n := contiguous.Size()
-	if n == 0 {
-		return []uint64{}, nil
-	}
-	handle, err := contiguous.handleValue()
-	if err != nil {
-		return nil, err
-	}
 	return runMLXValue(func() ([]uint64, error) {
+		contiguous, err := Contiguous(a)
+		if err != nil {
+			return nil, err
+		}
+		defer contiguous.Close()
+
+		if err := contiguous.Eval(); err != nil {
+			return nil, err
+		}
+		if err := contiguous.expectDType(UInt64); err != nil {
+			return nil, err
+		}
+
+		n := contiguous.Size()
+		if n == 0 {
+			return []uint64{}, nil
+		}
+		handle, err := contiguous.handleValue()
+		if err != nil {
+			return nil, err
+		}
 		ptr := C.mlx_array_data_uint64(handle)
 		if ptr == nil {
 			return nil, errors.New("mlxgo: MLX did not return materialized uint64 data")
@@ -1472,28 +1490,28 @@ func (a Array) UInt64Data() ([]uint64, error) {
 
 // BoolData evaluates the array and copies its bool contents into Go.
 func (a Array) BoolData() ([]bool, error) {
-	contiguous, err := Contiguous(a)
-	if err != nil {
-		return nil, err
-	}
-	defer contiguous.Close()
-
-	if err := contiguous.Eval(); err != nil {
-		return nil, err
-	}
-	if err := contiguous.expectDType(Bool); err != nil {
-		return nil, err
-	}
-
-	n := contiguous.Size()
-	if n == 0 {
-		return []bool{}, nil
-	}
-	handle, err := contiguous.handleValue()
-	if err != nil {
-		return nil, err
-	}
 	return runMLXValue(func() ([]bool, error) {
+		contiguous, err := Contiguous(a)
+		if err != nil {
+			return nil, err
+		}
+		defer contiguous.Close()
+
+		if err := contiguous.Eval(); err != nil {
+			return nil, err
+		}
+		if err := contiguous.expectDType(Bool); err != nil {
+			return nil, err
+		}
+
+		n := contiguous.Size()
+		if n == 0 {
+			return []bool{}, nil
+		}
+		handle, err := contiguous.handleValue()
+		if err != nil {
+			return nil, err
+		}
 		ptr := C.mlx_array_data_bool(handle)
 		if ptr == nil {
 			return nil, errors.New("mlxgo: MLX did not return materialized bool data")

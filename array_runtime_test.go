@@ -232,6 +232,46 @@ func TestRuntimeInvalidNativeOperationReturnsError(t *testing.T) {
 	}
 }
 
+func TestRuntimeBatchBuildEvalAndRead(t *testing.T) {
+	if err := SetDefaultCPU(); err != nil {
+		t.Fatal(err)
+	}
+
+	var got []float32
+	if err := Batch(func() error {
+		left, err := NewFloat32([]float32{1, 2, 3}, []int{3})
+		if err != nil {
+			return fmt.Errorf("new left: %w", err)
+		}
+		defer left.Close()
+
+		right, err := NewFloat32([]float32{10, 20, 30}, []int{3})
+		if err != nil {
+			return fmt.Errorf("new right: %w", err)
+		}
+		defer right.Close()
+
+		product, err := Multiply(left, right)
+		if err != nil {
+			return fmt.Errorf("multiply: %w", err)
+		}
+		defer product.Close()
+
+		got, err = product.Float32Data()
+		if err != nil {
+			return fmt.Errorf("data: %w", err)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	want := []float32{10, 40, 90}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("batch data = %v, want %v", got, want)
+	}
+}
+
 func TestRuntimeConcurrentBuildAndEval(t *testing.T) {
 	tests := []struct {
 		name string

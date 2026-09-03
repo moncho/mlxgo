@@ -81,7 +81,8 @@ var closureRegistry = struct {
 	m:    make(map[uint64]*closureState),
 }
 
-// NewClosure creates an MLX closure backed by fn.
+// NewClosure creates an MLX closure backed by fn. The callback runs on the MLX
+// worker thread; do not block it on goroutines or work that needs to call MLX.
 func NewClosure(fn Func) (*Closure, error) {
 	if fn == nil {
 		return nil, errors.New("mlxgo: closure function must not be nil")
@@ -161,7 +162,9 @@ func (c *Closure) Close() error {
 }
 
 // NewValueAndGrad creates a value-and-gradient transform for fn. If argnums is
-// empty, gradients are computed with respect to argument 0.
+// empty, gradients are computed with respect to argument 0. The callback runs
+// on the MLX worker thread; do not block it on goroutines or work that needs to
+// call MLX.
 func NewValueAndGrad(fn Func, argnums ...int) (*ValueAndGrad, error) {
 	if len(argnums) == 0 {
 		argnums = []int{0}
