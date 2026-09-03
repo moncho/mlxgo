@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -587,6 +588,7 @@ func buildAndEvalOnce(worker, iteration int) error {
 	}
 	defer sum.Close()
 
+	runtime.Gosched()
 	if err := sum.Eval(); err != nil {
 		return fmt.Errorf("worker %d iteration %d eval: %w", worker, iteration, err)
 	}

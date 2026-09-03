@@ -163,6 +163,9 @@ make autograd-linear
   execution, or `SetDefaultDevice` to choose CPU/GPU index 0 explicitly. This
   does not bypass MLX's Metal initialization requirement in sandboxed processes
   that cannot enumerate a Metal device.
+- Native MLX calls run on a dedicated OS thread. This keeps MLX stream affinity
+  stable across lazy graph construction and evaluation, so callers can use
+  ordinary Go goroutines; the native calls themselves are serialized.
 - Data-copy methods call `Contiguous` internally before touching MLX's raw data
   pointers, so transposed and broadcasted views copy back correctly.
 - The native build installs an MLX error handler during package initialization.
