@@ -2,6 +2,8 @@
 
 package mlx
 
+func Compile(fn Func, shapeless bool) (*Closure, error) { return nil, errBuiltWithoutMLX }
+
 // Func is a Go function that can be wrapped as an MLX closure in the native
 // build.
 type Func func([]Array) ([]Array, error)

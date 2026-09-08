@@ -1,8 +1,8 @@
 # MLX From Go
 
-This workspace is a small Go starter for using Apple's MLX through the official
-MLX C bridge. It includes a low-level array wrapper plus a small helper layer
-for common model code such as linear layers, losses, and SGD updates.
+Go bindings for Apple's MLX through the official MLX C bridge, with array,
+autograd and optimizer APIs, Qwen2.5-0.5B inference, and LoRA fine-tuning.
+The higher-level model packages are experimental and deliberately narrow.
 
 MLX itself does not expose an official Go API. The supported native path is:
 
@@ -113,6 +113,107 @@ In sandboxed or headless macOS processes, MLX may abort with `No Metal device
 available` during library initialization. In that case, run the smoke command
 from a normal Terminal session with Metal access.
 
+## Qwen Inference And LoRA
+
+Download the public bf16 checkpoint once (about 1 GB) with the Hugging Face CLI:
+
+```sh
+hf download Qwen/Qwen2.5-0.5B-Instruct config.json model.safetensors tokenizer.json tokenizer_config.json \
+  --revision 7ae557604adf67be50417f59c2c2f167def9a775 \
+  --local-dir models/Qwen2.5-0.5B-Instruct
+go run -tags mlx ./cmd/generate -prompt "Explain why the sky is blue in one sentence."
+```
+
+Generation runs entirely in Go through MLX on the GPU. It uses the Qwen chat
+template, greedy decoding, tied embeddings, and a concatenating KV cache.
+Only the standard Qwen2 architecture with SiLU, full attention, unscaled RoPE,
+tied embeddings, zero dropout, and a single bf16 safetensors file is supported.
+Configuration and tensor mismatches return errors. The tokenizer is pure Go
+and supports Qwen2's byte-level BPE, NFC normalization, and added tokens.
+
+Fine-tune q/v LoRA adapters in all 24 layers, then generate with them:
+
+```sh
+go run -tags mlx ./cmd/finetune-qwen
+go run -tags mlx ./cmd/generate \
+  -adapters checkpoints/qwen-lora.safetensors \
+  -prompt "Please state amber's assigned code."
+```
+
+The included synthetic dataset teaches two code assignments using eight
+training prompts and two different validation prompts. It is an end-to-end
+engineering demonstration, not a general capability benchmark. The command
+requires validation loss to improve and checks that reloading adapters
+reproduces it. It saves only float32 LoRA factors and metadata; bf16 base
+weights remain frozen. The default rank is 4, alpha is 4, batch size is 2,
+learning rate is 0.001, and training lasts 30 AdamW steps.
+
+For your own data, use JSONL records in separate training and validation files:
+
+```json
+{"prompt":"What is the code for amber?","completion":"The code for amber is 7."}
+```
+
+```sh
+go run -tags mlx ./cmd/finetune-qwen -train train.jsonl -valid valid.jsonl \
+  -steps 100 -rank 8 -batch-size 2 -learning-rate 0.0001 \
+  -max-length 128 -out checkpoints/custom-lora.safetensors
+```
+
+Prompt tokens are masked out of the loss. Gradients are accumulated across
+variable-length examples and averaged by the number of completion tokens;
+examples are processed individually, so padding is unnecessary. Overlong
+examples are rejected rather than truncated. Keep validation examples separate
+from training. Memory use grows with sequence length and vocabulary logits;
+this implementation has no activation checkpointing or quantization.
+
+Adapters are bound to the exact base checkpoint SHA256. Loading them against
+another checkpoint or incompatible configuration fails. Each training call
+starts fresh AdamW moments; adapter files are not full optimizer checkpoints.
+Models, caches, adapters and optimizers must not be mutated or closed while in
+use. A cache belongs to one generation, and must be discarded after an error.
+
+### Reference Verification
+
+CI runs 119 Hugging Face tokenizer cases, small-transformer cache comparisons,
+LoRA finite-difference gradients, learning/frozen-weight/checkpoint tests, and
+AdamW checks against a scalar reference. It never downloads model weights.
+
+The real-checkpoint tests are opt-in:
+
+```sh
+MLXGO_QWEN2_DIR="$PWD/models/Qwen2.5-0.5B-Instruct" \
+  go test -tags "mlx mlxruntime" ./qwen2 -run TestQwenGolden -v
+MLXGO_QWEN2_DIR="$PWD/models/Qwen2.5-0.5B-Instruct" MLXGO_QWEN2_MEMORY=1 \
+  go test -tags "mlx mlxruntime" ./qwen2 -run TestQwenMemory -v
+```
+
+Golden verification requires all 32 reference tokens to match and maximum
+absolute prefill-logit error of at most 0.25. These limits are fixed in the
+test, not chosen from the Go output. The memory test warms up for 200 tokens,
+then checks retained RSS after two more 200-token runs against a 64 MiB growth
+limit. This detects regression in retained memory, not all possible leaks.
+
+Fixtures were generated with the pinned versions in
+`qwen2/requirements-reference.txt`, using the upstream
+[mlx-lm Qwen2 model](https://github.com/ml-explore/mlx-lm/blob/main/mlx_lm/models/qwen2.py)
+and its built-in `ConcatenateKVCache`. The model uses fused bias projections
+and compiled SwiGLU to match reference bf16 rounding. Different MLX versions,
+kernel choices, or cache layouts can change greedy decisions near tied logits.
+The C++ attention shim supports both mlx-c 0.6.0 and the newer `force_fused`
+signature without a version-dependent function-pointer cast.
+
+To deliberately regenerate fixtures on a Metal-capable Mac:
+
+```sh
+python3.12 -m venv .venv-qwen
+.venv-qwen/bin/pip install -r qwen2/requirements-reference.txt
+.venv-qwen/bin/python qwen2/make_fixture.py
+```
+
+The checked-in tokenizer vocabulary is a reduced fixture for the reference
+corpus; applications must load the full tokenizer from the model directory.
+
 ## Test
 
 Default stub build:
@@ -178,11 +279,12 @@ make finetune-mlp
 - IO: `Load`, `Save`, `LoadSafetensors`, `SaveSafetensors`
 - Random: `RandomSeed`, `RandomKey`, `RandomNormal`, `RandomUniform`,
   `RandomRandint`, `RandomBernoulli`, `RandomCategorical`
-- Transforms: `Closure`, `NewClosure`, `ValueAndGrad`, `NewValueAndGrad`,
+- Transforms: `Closure`, `NewClosure`, `Compile`, `ValueAndGrad`, `NewValueAndGrad`,
   `Eval`, `AsyncEval`
-- NN/loss helpers: `Linear`, `LinearNoBias`, `MSELoss`, `LogSoftmaxAxis`,
+- NN/loss helpers: `Linear`, `LinearNoBias`, `SiLU`, `RMSNorm`, `RoPE`,
+  `ScaledDotProductAttention`, `MSELoss`, `LogSoftmaxAxis`,
   `SoftmaxCrossEntropyAxis`, `CrossEntropyAxis`
-- Optimizers/utilities: `SGD`, `SGDWithLearningRate`, `CloseArrays`
+- Optimizers/utilities: `SGD`, `SGDWithLearningRate`, `NewAdamW`, `CloseArrays`
 
 ## Development Notes
 

@@ -1,5 +1,17 @@
 package mlx
 
+// SiLU computes x * sigmoid(x).
+func SiLU(x Array) (Array, error) {
+	return batchValue(func() (Array, error) {
+		s, err := Sigmoid(x)
+		if err != nil {
+			return Array{}, err
+		}
+		defer s.Close()
+		return Multiply(x, s)
+	})
+}
+
 // Linear computes x @ weight + bias.
 func Linear(x, weight, bias Array) (Array, error) {
 	return batchValue(func() (Array, error) {

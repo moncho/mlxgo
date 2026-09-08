@@ -37,6 +37,7 @@ type Closure struct {
 	handle C.mlx_closure
 	state  *closureState
 	closed bool
+	source *Closure
 }
 
 // ValueAndGrad owns an MLX value-and-gradient transform.
@@ -108,6 +109,34 @@ func NewClosure(fn Func) (*Closure, error) {
 	return &Closure{handle: handle, state: state}, nil
 }
 
+// Compile creates a compiled closure. The callback must be a pure array
+// function: tracing may run only once, and Go side effects are not replayed.
+// It runs on the MLX worker; never block it on other goroutines calling MLX.
+func Compile(fn Func, shapeless bool) (*Closure, error) {
+	source, err := NewClosure(fn)
+	if err != nil {
+		return nil, err
+	}
+	compiled, err := runMLXValue(func() (*Closure, error) {
+		var handle C.mlx_closure
+		clearMLXError()
+		if code := C.mlx_compile(&handle, source.handle, C.bool(shapeless)); code != 0 {
+			if handle.ctx != nil {
+				_ = C.mlx_closure_free(handle)
+			}
+			return nil, mlxError("mlx_compile", int(code))
+		}
+		if handle.ctx == nil {
+			return nil, mlxEmptyHandleError("mlx_compile", "closure")
+		}
+		return &Closure{handle: handle, state: source.state, source: source}, nil
+	})
+	if err != nil {
+		_ = source.Close()
+	}
+	return compiled, err
+}
+
 // Apply calls the closure with inputs.
 func (c *Closure) Apply(inputs ...Array) ([]Array, error) {
 	if c == nil || c.closed || c.handle.ctx == nil {
@@ -156,6 +185,9 @@ func (c *Closure) Close() error {
 		}
 		c.handle.ctx = nil
 		c.closed = true
+		if c.source != nil {
+			return c.source.Close()
+		}
 		return nil
 	})
 	return err
