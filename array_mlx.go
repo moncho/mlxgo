@@ -760,6 +760,7 @@ func StackAxis(arrays []Array, axis int) (Array, error) {
 }
 
 // Load reads a single array file supported by MLX, such as .npy.
+// File IO uses a CPU stream; subsequent operations use the selected device.
 func Load(file string) (Array, error) {
 	if file == "" {
 		return Array{}, errors.New("mlxgo: load file must not be empty")
@@ -767,7 +768,7 @@ func Load(file string) (Array, error) {
 	cfile := C.CString(file)
 	defer C.free(unsafe.Pointer(cfile))
 
-	return withCurrentStreamValue(func(stream C.mlx_stream) (Array, error) {
+	return withCPUStreamValue(func(stream C.mlx_stream) (Array, error) {
 		out := newArray(C.mlx_array_new())
 		clearMLXError()
 		if code := C.mlx_load(out.outHandle(), cfile, stream); code != 0 {
@@ -799,7 +800,8 @@ func Save(file string, a Array) error {
 }
 
 // LoadSafetensors opens a safetensors file and returns a handle for looking up
-// arrays by name.
+// arrays by name. File IO uses a CPU stream; subsequent operations use the
+// selected device.
 func LoadSafetensors(file string) (*SafeTensors, error) {
 	if file == "" {
 		return nil, errors.New("mlxgo: safetensors file must not be empty")
@@ -807,7 +809,7 @@ func LoadSafetensors(file string) (*SafeTensors, error) {
 	cfile := C.CString(file)
 	defer C.free(unsafe.Pointer(cfile))
 
-	return withCurrentStreamValue(func(stream C.mlx_stream) (*SafeTensors, error) {
+	return withCPUStreamValue(func(stream C.mlx_stream) (*SafeTensors, error) {
 		clearMLXError()
 		arrays := C.mlx_map_string_to_array_new()
 		arraysErr := mlxEmptyHandleError("mlx_map_string_to_array_new", "map")
@@ -1702,6 +1704,20 @@ func withCurrentStreamValue[T any](fn func(C.mlx_stream) (T, error)) (T, error) 
 			return zero, err
 		}
 		defer done()
+		return fn(stream)
+	})
+}
+
+// MLX's lazy Load primitive has no GPU implementation. Keep IO on the worker's
+// CPU stream without changing the device used by the rest of the graph.
+func withCPUStreamValue[T any](fn func(C.mlx_stream) (T, error)) (T, error) {
+	return runMLXValue(func() (T, error) {
+		stream, err := newDefaultStream(DeviceCPU, 0)
+		if err != nil {
+			var zero T
+			return zero, err
+		}
+		defer C.mlx_stream_free(stream)
 		return fn(stream)
 	})
 }

@@ -43,3 +43,4 @@ jobs:
       - run: CGO_ENABLED=1 go run -tags mlx ./cmd/mlp
       - run: CGO_ENABLED=1 go run -tags mlx ./cmd/train-linear
       - run: CGO_ENABLED=1 go run -tags mlx ./cmd/autograd-linear
+      - run: CGO_ENABLED=1 go run -tags mlx ./cmd/finetune-mlp

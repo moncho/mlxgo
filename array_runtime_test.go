@@ -534,6 +534,45 @@ func TestRuntimeSaveLoad(t *testing.T) {
 	assertFloat32Data(t, loaded, []float32{1, 2, 3, 4})
 }
 
+func TestRuntimeLoadWithGPUDefault(t *testing.T) {
+	if err := SetDefaultGPU(); err != nil {
+		t.Fatal(err)
+	}
+	a := mustNewFloat32(t, []float32{1, 2, 3, 4}, []int{2, 2})
+	defer a.Close()
+	for _, format := range []string{"npy", "safetensors"} {
+		t.Run(format, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "weights."+format)
+			var loaded Array
+			var err error
+			if format == "npy" {
+				if err := Save(path, a); err != nil {
+					t.Fatal(err)
+				}
+				loaded, err = Load(path)
+			} else {
+				if err := SaveSafetensors(path, map[string]Array{"weight": a}, nil); err != nil {
+					t.Fatal(err)
+				}
+				file, loadErr := LoadSafetensors(path)
+				if loadErr != nil {
+					t.Fatal(loadErr)
+				}
+				loaded, err = file.Get("weight")
+				_ = file.Close()
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer loaded.Close()
+			// Evaluation must cross from the lazy CPU load to GPU arithmetic.
+			squared := mustSquare(t, loaded)
+			defer squared.Close()
+			assertFloat32Data(t, squared, []float32{1, 4, 9, 16})
+		})
+	}
+}
+
 func TestRuntimeClosureApply(t *testing.T) {
 	if err := SetDefaultCPU(); err != nil {
 		t.Fatal(err)

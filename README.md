@@ -82,6 +82,33 @@ Run the autograd linear-regression training example:
 CGO_ENABLED=1 go run -tags mlx ./cmd/autograd-linear
 ```
 
+## Fine-Tune A Tiny MLP
+
+```sh
+CGO_ENABLED=1 go run -tags mlx ./cmd/finetune-mlp
+# To run on Metal:
+CGO_ENABLED=1 go run -tags mlx ./cmd/finetune-mlp -device gpu -out checkpoints/mlp-gpu
+```
+
+This self-contained example trains a float32 `1 -> 16 (tanh) -> 1` MLP with
+49 parameters. It pretrains on `y = sin(1.5*x)`, saves and closes the model,
+then loads the checkpoint and fine-tunes all four parameter tensors on
+`y = 0.6*sin(1.5*x) + 0.5`. Both phases use autograd and full-batch SGD,
+with each training step wrapped in `Batch`.
+
+There are 64 training inputs in `[-1, 1]` and 63 separate held-out inputs at
+their midpoints. A fixed initialization seed makes runs reproducible. The
+command prints training loss and held-out MSE before and after adaptation;
+it exits with an error unless source and adapted MSE are at most `0.02`,
+adaptation reduces target MSE by more than 90%, and reloading the final
+checkpoint preserves predictions within `1e-6`.
+
+Weights and architecture metadata are saved to `pretrained.safetensors` and
+`finetuned.safetensors` under `-out` (default `checkpoints/finetune-mlp`, ignored
+by Git). Existing files at those paths are overwritten. The example defaults
+to CPU; the runtime test exercises both CPU and GPU. This demonstrates toy
+model fine-tuning, not a pretrained LLM or LoRA training pipeline.
+
 In sandboxed or headless macOS processes, MLX may abort with `No Metal device
 available` during library initialization. In that case, run the smoke command
 from a normal Terminal session with Metal access.
@@ -121,6 +148,7 @@ make linear
 make mlp
 make train-linear
 make autograd-linear
+make finetune-mlp
 ```
 
 ## API Covered
@@ -160,6 +188,9 @@ make autograd-linear
 
 - MLX computation is lazy. Call `Eval` or a data-copy method such as
   `Float32Data` before reading results.
+- File loading uses a CPU stream because MLX's load primitive has no GPU
+  implementation. Loaded arrays can feed GPU operations without changing the
+  selected device.
 - The wrapper defaults to GPU index 0. Call `SetDefaultCPU` when you want CPU
   execution, or `SetDefaultDevice` to choose CPU/GPU index 0 explicitly. This
   does not bypass MLX's Metal initialization requirement in sandboxed processes

@@ -1,7 +1,7 @@
 GO ?= go
 GOCACHE ?= $(CURDIR)/.gocache
 
-.PHONY: test test-native test-runtime vet vet-native test-race test-race-native smoke linear mlp train-linear autograd-linear
+.PHONY: test test-native test-runtime vet vet-native test-race test-race-native smoke linear mlp train-linear autograd-linear finetune-mlp
 
 test:
 	GOCACHE="$(GOCACHE)" $(GO) test ./...
@@ -38,3 +38,6 @@ train-linear:
 
 autograd-linear:
 	GOCACHE="$(GOCACHE)" CGO_ENABLED=1 $(GO) run -tags mlx ./cmd/autograd-linear
+
+finetune-mlp:
+	GOCACHE="$(GOCACHE)" CGO_ENABLED=1 $(GO) run -tags mlx ./cmd/finetune-mlp
