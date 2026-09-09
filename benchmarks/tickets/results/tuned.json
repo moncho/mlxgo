@@ -1,0 +1,1849 @@
+{
+  "version": "tickets-v1",
+  "created_utc": "2026-09-09T21:09:20.210245Z",
+  "model_sha256": "fdf756fa7fcbe7404d5c60e26bff1a0c8b8aa1f72ced49e7dd0210fe288fb7fe",
+  "tokenizer_sha256": "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539",
+  "adapters_sha256": "21c4fd4df14825284566422c98fc2d1ab9b65abb83248be265527c5af4f3d59f",
+  "model_config": {
+    "architectures": [
+      "Qwen2ForCausalLM"
+    ],
+    "model_type": "qwen2",
+    "hidden_size": 896,
+    "intermediate_size": 4864,
+    "num_hidden_layers": 24,
+    "num_attention_heads": 14,
+    "num_key_value_heads": 2,
+    "rms_norm_eps": 0.000001,
+    "rope_theta": 1000000,
+    "tie_word_embeddings": true,
+    "vocab_size": 151936,
+    "max_position_embeddings": 32768,
+    "hidden_act": "silu",
+    "rope_scaling": null,
+    "use_sliding_window": false,
+    "attention_dropout": 0
+  },
+  "dataset": {
+    "version": "tickets-v1",
+    "origin": "Synthetic, handwritten templates; no customer data. Not a real-world capability benchmark.",
+    "sha256": {
+      "retention.jsonl": "d59b75f6580a044283cf0815ef6c06784907365af115c4c6aef45f85b5758aec",
+      "test.jsonl": "af192db05e496f149c117719f329f5dd5a5124c4cb425898859b621d0f68e6da",
+      "train.jsonl": "d8dbf1c149db8b3963834fdff489585362a9565e6b76ac3cb8cd1293c22d99da",
+      "valid.jsonl": "f232873d353d635f53461de821ecc4a863c7aa8ee4920f8ffcaa83e5d6819447"
+    },
+    "counts": {
+      "retention": 8,
+      "test": 96,
+      "train": 192,
+      "valid": 48
+    }
+  },
+  "max_tokens": 96,
+  "go_version": "go1.27.0",
+  "platform": "darwin/arm64",
+  "device": "gpu",
+  "peak_process_rss_bytes": 1106821120,
+  "memory_note": "Process-lifetime peak RSS including model loading and warm-up, not total Metal allocation; 0 means unavailable.",
+  "summaries": {
+    "retention": {
+      "count": 8,
+      "exact": 6,
+      "valid_json": 0,
+      "schema_valid": 0,
+      "ticket_id_correct": 0,
+      "queue_correct": 0,
+      "priority_correct": 0,
+      "hit_token_limit": 0,
+      "generated_tokens": 20,
+      "generation_seconds": 0.352584875,
+      "prefill_seconds": 0.14949858300000002,
+      "decode_seconds": 0.20250179
+    },
+    "test": {
+      "count": 96,
+      "exact": 64,
+      "valid_json": 96,
+      "schema_valid": 96,
+      "ticket_id_correct": 96,
+      "queue_correct": 91,
+      "priority_correct": 68,
+      "hit_token_limit": 0,
+      "generated_tokens": 1920,
+      "generation_seconds": 23.959765832999995,
+      "prefill_seconds": 3.8958744170000004,
+      "decode_seconds": 20.052949860999995
+    }
+  },
+  "predictions": [
+    {
+      "id": "TK-30007",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30007\",\"queue\":\"billing\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30007\",\"queue\":\"billing\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.248742875
+    },
+    {
+      "id": "TK-30014",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30014\",\"queue\":\"billing\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30014\",\"queue\":\"billing\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.243857416
+    },
+    {
+      "id": "TK-30021",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30021\",\"queue\":\"billing\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30021\",\"queue\":\"billing\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.245038459
+    },
+    {
+      "id": "TK-30028",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30028\",\"queue\":\"billing\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30028\",\"queue\":\"billing\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.244581709
+    },
+    {
+      "id": "TK-30035",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30035\",\"queue\":\"billing\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30035\",\"queue\":\"billing\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.254011709
+    },
+    {
+      "id": "TK-30042",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30042\",\"queue\":\"billing\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30042\",\"queue\":\"billing\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.244504625
+    },
+    {
+      "id": "TK-30049",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30049\",\"queue\":\"billing\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30049\",\"queue\":\"billing\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.245915708
+    },
+    {
+      "id": "TK-30056",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30056\",\"queue\":\"billing\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30056\",\"queue\":\"billing\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.245729584
+    },
+    {
+      "id": "TK-30063",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30063\",\"queue\":\"billing\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30063\",\"queue\":\"billing\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": true,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.247436375
+    },
+    {
+      "id": "TK-30070",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30070\",\"queue\":\"billing\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30070\",\"queue\":\"billing\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": true,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.245955625
+    },
+    {
+      "id": "TK-30077",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30077\",\"queue\":\"billing\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30077\",\"queue\":\"billing\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": true,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.281092083
+    },
+    {
+      "id": "TK-30084",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30084\",\"queue\":\"billing\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30084\",\"queue\":\"billing\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": true,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.248895084
+    },
+    {
+      "id": "TK-30091",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30091\",\"queue\":\"access\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30091\",\"queue\":\"access\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.24672475
+    },
+    {
+      "id": "TK-30098",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30098\",\"queue\":\"access\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30098\",\"queue\":\"access\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.243379333
+    },
+    {
+      "id": "TK-30105",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30105\",\"queue\":\"access\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30105\",\"queue\":\"access\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.244196416
+    },
+    {
+      "id": "TK-30112",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30112\",\"queue\":\"access\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30112\",\"queue\":\"access\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.255129917
+    },
+    {
+      "id": "TK-30119",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30119\",\"queue\":\"access\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30119\",\"queue\":\"access\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.252434083
+    },
+    {
+      "id": "TK-30126",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30126\",\"queue\":\"access\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30126\",\"queue\":\"access\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.249161625
+    },
+    {
+      "id": "TK-30133",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30133\",\"queue\":\"access\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30133\",\"queue\":\"access\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.26621125
+    },
+    {
+      "id": "TK-30140",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30140\",\"queue\":\"access\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30140\",\"queue\":\"access\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.247447417
+    },
+    {
+      "id": "TK-30147",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30147\",\"queue\":\"access\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30147\",\"queue\":\"access\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": true,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.2437745
+    },
+    {
+      "id": "TK-30154",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30154\",\"queue\":\"access\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30154\",\"queue\":\"access\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": true,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.244802708
+    },
+    {
+      "id": "TK-30161",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30161\",\"queue\":\"access\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30161\",\"queue\":\"access\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": true,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.245487542
+    },
+    {
+      "id": "TK-30168",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30168\",\"queue\":\"access\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30168\",\"queue\":\"billing\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": false,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.247675417
+    },
+    {
+      "id": "TK-30175",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30175\",\"queue\":\"bug\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30175\",\"queue\":\"bug\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.244944666
+    },
+    {
+      "id": "TK-30182",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30182\",\"queue\":\"bug\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30182\",\"queue\":\"bug\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.243278708
+    },
+    {
+      "id": "TK-30189",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30189\",\"queue\":\"bug\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30189\",\"queue\":\"bug\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.242961167
+    },
+    {
+      "id": "TK-30196",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30196\",\"queue\":\"bug\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30196\",\"queue\":\"bug\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.244336875
+    },
+    {
+      "id": "TK-30203",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30203\",\"queue\":\"bug\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30203\",\"queue\":\"bug\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.258223417
+    },
+    {
+      "id": "TK-30210",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30210\",\"queue\":\"bug\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30210\",\"queue\":\"bug\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.248012291
+    },
+    {
+      "id": "TK-30217",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30217\",\"queue\":\"bug\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30217\",\"queue\":\"bug\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.246558792
+    },
+    {
+      "id": "TK-30224",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30224\",\"queue\":\"bug\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30224\",\"queue\":\"bug\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.24507225
+    },
+    {
+      "id": "TK-30231",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30231\",\"queue\":\"bug\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30231\",\"queue\":\"bug\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": true,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.245389708
+    },
+    {
+      "id": "TK-30238",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30238\",\"queue\":\"bug\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30238\",\"queue\":\"bug\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": true,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.245666208
+    },
+    {
+      "id": "TK-30245",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30245\",\"queue\":\"bug\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30245\",\"queue\":\"bug\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": true,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.24446425
+    },
+    {
+      "id": "TK-30252",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30252\",\"queue\":\"bug\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30252\",\"queue\":\"bug\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": true,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.252279584
+    },
+    {
+      "id": "TK-30259",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30259\",\"queue\":\"feature\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30259\",\"queue\":\"bug\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": false,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.251367083
+    },
+    {
+      "id": "TK-30266",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30266\",\"queue\":\"feature\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30266\",\"queue\":\"feature\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.248594709
+    },
+    {
+      "id": "TK-30273",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30273\",\"queue\":\"feature\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30273\",\"queue\":\"bug\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": false,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.247276042
+    },
+    {
+      "id": "TK-30280",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30280\",\"queue\":\"feature\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30280\",\"queue\":\"feature\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.246057333
+    },
+    {
+      "id": "TK-30287",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30287\",\"queue\":\"feature\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30287\",\"queue\":\"bug\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": false,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.242905584
+    },
+    {
+      "id": "TK-30294",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30294\",\"queue\":\"feature\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30294\",\"queue\":\"feature\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.242706792
+    },
+    {
+      "id": "TK-30301",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30301\",\"queue\":\"feature\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30301\",\"queue\":\"bug\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": false,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.243213958
+    },
+    {
+      "id": "TK-30308",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30308\",\"queue\":\"feature\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30308\",\"queue\":\"feature\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.272634625
+    },
+    {
+      "id": "TK-30315",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30315\",\"queue\":\"feature\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30315\",\"queue\":\"feature\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": true,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.270481958
+    },
+    {
+      "id": "TK-30322",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30322\",\"queue\":\"feature\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30322\",\"queue\":\"feature\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": true,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.259542458
+    },
+    {
+      "id": "TK-30329",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30329\",\"queue\":\"feature\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30329\",\"queue\":\"feature\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": true,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.256250792
+    },
+    {
+      "id": "TK-30336",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30336\",\"queue\":\"feature\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30336\",\"queue\":\"feature\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": true,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.273329458
+    },
+    {
+      "id": "TK-30343",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30343\",\"queue\":\"billing\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30343\",\"queue\":\"billing\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.245691292
+    },
+    {
+      "id": "TK-30350",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30350\",\"queue\":\"billing\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30350\",\"queue\":\"billing\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.243811333
+    },
+    {
+      "id": "TK-30357",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30357\",\"queue\":\"billing\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30357\",\"queue\":\"billing\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.243863417
+    },
+    {
+      "id": "TK-30364",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30364\",\"queue\":\"billing\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30364\",\"queue\":\"billing\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.245976541
+    },
+    {
+      "id": "TK-30371",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30371\",\"queue\":\"billing\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30371\",\"queue\":\"billing\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.244784375
+    },
+    {
+      "id": "TK-30378",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30378\",\"queue\":\"billing\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30378\",\"queue\":\"billing\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.2473775
+    },
+    {
+      "id": "TK-30385",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30385\",\"queue\":\"billing\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30385\",\"queue\":\"billing\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.249709083
+    },
+    {
+      "id": "TK-30392",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30392\",\"queue\":\"billing\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30392\",\"queue\":\"billing\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.244203041
+    },
+    {
+      "id": "TK-30399",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30399\",\"queue\":\"billing\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30399\",\"queue\":\"billing\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": true,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.252082625
+    },
+    {
+      "id": "TK-30406",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30406\",\"queue\":\"billing\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30406\",\"queue\":\"billing\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": true,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.255673917
+    },
+    {
+      "id": "TK-30413",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30413\",\"queue\":\"billing\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30413\",\"queue\":\"billing\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": true,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.243933917
+    },
+    {
+      "id": "TK-30420",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30420\",\"queue\":\"billing\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30420\",\"queue\":\"billing\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": true,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.24690925
+    },
+    {
+      "id": "TK-30427",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30427\",\"queue\":\"access\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30427\",\"queue\":\"access\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.254227917
+    },
+    {
+      "id": "TK-30434",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30434\",\"queue\":\"access\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30434\",\"queue\":\"access\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.248778416
+    },
+    {
+      "id": "TK-30441",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30441\",\"queue\":\"access\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30441\",\"queue\":\"access\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.244971959
+    },
+    {
+      "id": "TK-30448",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30448\",\"queue\":\"access\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30448\",\"queue\":\"access\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.246451875
+    },
+    {
+      "id": "TK-30455",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30455\",\"queue\":\"access\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30455\",\"queue\":\"access\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.246376208
+    },
+    {
+      "id": "TK-30462",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30462\",\"queue\":\"access\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30462\",\"queue\":\"access\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.244687083
+    },
+    {
+      "id": "TK-30469",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30469\",\"queue\":\"access\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30469\",\"queue\":\"access\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.243416542
+    },
+    {
+      "id": "TK-30476",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30476\",\"queue\":\"access\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30476\",\"queue\":\"access\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.243453583
+    },
+    {
+      "id": "TK-30483",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30483\",\"queue\":\"access\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30483\",\"queue\":\"access\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": true,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.246247625
+    },
+    {
+      "id": "TK-30490",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30490\",\"queue\":\"access\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30490\",\"queue\":\"access\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": true,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.243107958
+    },
+    {
+      "id": "TK-30497",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30497\",\"queue\":\"access\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30497\",\"queue\":\"access\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": true,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.248997292
+    },
+    {
+      "id": "TK-30504",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30504\",\"queue\":\"access\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30504\",\"queue\":\"access\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": true,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.246421375
+    },
+    {
+      "id": "TK-30511",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30511\",\"queue\":\"bug\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30511\",\"queue\":\"bug\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.247057458
+    },
+    {
+      "id": "TK-30518",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30518\",\"queue\":\"bug\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30518\",\"queue\":\"bug\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.259642292
+    },
+    {
+      "id": "TK-30525",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30525\",\"queue\":\"bug\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30525\",\"queue\":\"bug\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.257518666
+    },
+    {
+      "id": "TK-30532",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30532\",\"queue\":\"bug\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30532\",\"queue\":\"bug\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.24668425
+    },
+    {
+      "id": "TK-30539",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30539\",\"queue\":\"bug\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30539\",\"queue\":\"bug\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.245831417
+    },
+    {
+      "id": "TK-30546",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30546\",\"queue\":\"bug\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30546\",\"queue\":\"bug\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.252292166
+    },
+    {
+      "id": "TK-30553",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30553\",\"queue\":\"bug\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30553\",\"queue\":\"bug\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.244728375
+    },
+    {
+      "id": "TK-30560",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30560\",\"queue\":\"bug\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30560\",\"queue\":\"bug\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.245884459
+    },
+    {
+      "id": "TK-30567",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30567\",\"queue\":\"bug\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30567\",\"queue\":\"bug\",\"priority\":\"low\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.26343775
+    },
+    {
+      "id": "TK-30574",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30574\",\"queue\":\"bug\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30574\",\"queue\":\"bug\",\"priority\":\"low\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.246625916
+    },
+    {
+      "id": "TK-30581",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30581\",\"queue\":\"bug\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30581\",\"queue\":\"bug\",\"priority\":\"low\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.262966
+    },
+    {
+      "id": "TK-30588",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30588\",\"queue\":\"bug\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30588\",\"queue\":\"bug\",\"priority\":\"low\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.260037541
+    },
+    {
+      "id": "TK-30595",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30595\",\"queue\":\"feature\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30595\",\"queue\":\"feature\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.256825792
+    },
+    {
+      "id": "TK-30602",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30602\",\"queue\":\"feature\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30602\",\"queue\":\"feature\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.258908666
+    },
+    {
+      "id": "TK-30609",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30609\",\"queue\":\"feature\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30609\",\"queue\":\"feature\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.262492042
+    },
+    {
+      "id": "TK-30616",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30616\",\"queue\":\"feature\",\"priority\":\"high\"}",
+      "output": "{\"ticket_id\":\"TK-30616\",\"queue\":\"feature\",\"priority\":\"high\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.262249542
+    },
+    {
+      "id": "TK-30623",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30623\",\"queue\":\"feature\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30623\",\"queue\":\"feature\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.255071
+    },
+    {
+      "id": "TK-30630",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30630\",\"queue\":\"feature\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30630\",\"queue\":\"feature\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.242845875
+    },
+    {
+      "id": "TK-30637",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30637\",\"queue\":\"feature\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30637\",\"queue\":\"feature\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.246835708
+    },
+    {
+      "id": "TK-30644",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30644\",\"queue\":\"feature\",\"priority\":\"normal\"}",
+      "output": "{\"ticket_id\":\"TK-30644\",\"queue\":\"feature\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": true,
+        "ticket_id": true,
+        "queue": true,
+        "priority": true
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.24914675
+    },
+    {
+      "id": "TK-30651",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30651\",\"queue\":\"feature\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30651\",\"queue\":\"feature\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": true,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.2426325
+    },
+    {
+      "id": "TK-30658",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30658\",\"queue\":\"feature\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30658\",\"queue\":\"feature\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": true,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.242988625
+    },
+    {
+      "id": "TK-30665",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30665\",\"queue\":\"feature\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30665\",\"queue\":\"feature\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": true,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.244969959
+    },
+    {
+      "id": "TK-30672",
+      "split": "test",
+      "expected": "{\"ticket_id\":\"TK-30672\",\"queue\":\"feature\",\"priority\":\"low\"}",
+      "output": "{\"ticket_id\":\"TK-30672\",\"queue\":\"feature\",\"priority\":\"normal\"}",
+      "score": {
+        "valid_json": true,
+        "schema_valid": true,
+        "exact": false,
+        "ticket_id": true,
+        "queue": true,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 20,
+      "seconds": 0.243204042
+    },
+    {
+      "id": "retention-0",
+      "split": "retention",
+      "expected": "15",
+      "output": "15",
+      "score": {
+        "valid_json": false,
+        "schema_valid": false,
+        "exact": true,
+        "ticket_id": false,
+        "queue": false,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 2,
+      "seconds": 0.039128333
+    },
+    {
+      "id": "retention-1",
+      "split": "retention",
+      "expected": "5",
+      "output": "5",
+      "score": {
+        "valid_json": false,
+        "schema_valid": false,
+        "exact": true,
+        "ticket_id": false,
+        "queue": false,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 1,
+      "seconds": 0.028371334
+    },
+    {
+      "id": "retention-2",
+      "split": "retention",
+      "expected": "hello",
+      "output": "hello",
+      "score": {
+        "valid_json": false,
+        "schema_valid": false,
+        "exact": true,
+        "ticket_id": false,
+        "queue": false,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 1,
+      "seconds": 0.028803333
+    },
+    {
+      "id": "retention-3",
+      "split": "retention",
+      "expected": "hot",
+      "output": "hot",
+      "score": {
+        "valid_json": false,
+        "schema_valid": false,
+        "exact": true,
+        "ticket_id": false,
+        "queue": false,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 1,
+      "seconds": 0.028847334
+    },
+    {
+      "id": "retention-4",
+      "split": "retention",
+      "expected": "[1,2,3]",
+      "output": "[\"1\", \"2\", \"3\"]",
+      "score": {
+        "valid_json": false,
+        "schema_valid": false,
+        "exact": false,
+        "ticket_id": false,
+        "queue": false,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 9,
+      "seconds": 0.110619458
+    },
+    {
+      "id": "retention-5",
+      "split": "retention",
+      "expected": "7",
+      "output": "7",
+      "score": {
+        "valid_json": false,
+        "schema_valid": false,
+        "exact": true,
+        "ticket_id": false,
+        "queue": false,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 1,
+      "seconds": 0.028807791
+    },
+    {
+      "id": "retention-6",
+      "split": "retention",
+      "expected": "maple",
+      "output": "maple tree",
+      "score": {
+        "valid_json": false,
+        "schema_valid": false,
+        "exact": false,
+        "ticket_id": false,
+        "queue": false,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 3,
+      "seconds": 0.048783792
+    },
+    {
+      "id": "retention-7",
+      "split": "retention",
+      "expected": "thank you",
+      "output": "thank you",
+      "score": {
+        "valid_json": false,
+        "schema_valid": false,
+        "exact": true,
+        "ticket_id": false,
+        "queue": false,
+        "priority": false
+      },
+      "hit_token_limit": false,
+      "tokens": 2,
+      "seconds": 0.0392235
+    }
+  ]
+}

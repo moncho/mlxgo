@@ -1,0 +1,30 @@
+Model: Qwen/Qwen2.5-0.5B-Instruct
+Base revision: 7ae557604adf67be50417f59c2c2f167def9a775
+Recipe: steps=100 batch_size=2 rank=8 alpha=8 learning_rate=0.0003
+        weight_decay=0 max_grad_norm=1 max_length=256 seed=42
+Train: benchmarks/tickets/train.jsonl
+Validation: benchmarks/tickets/valid.jsonl
+
+held-out loss before=0.812929; train=192 validation=48 examples
+step=1 train_loss=0.652654
+step=5 train_loss=0.228988
+step=10 train_loss=0.105678
+step=15 train_loss=0.037688
+step=20 train_loss=0.015640
+step=25 train_loss=0.005284
+step=30 train_loss=0.008427
+step=35 train_loss=0.001237
+step=40 train_loss=0.000964
+step=45 train_loss=0.000255
+step=50 train_loss=0.000191
+step=55 train_loss=0.000162
+step=60 train_loss=0.000158
+step=65 train_loss=0.000165
+step=70 train_loss=0.000194
+step=75 train_loss=0.000275
+step=80 train_loss=0.000128
+step=85 train_loss=0.000214
+step=90 train_loss=0.000122
+step=95 train_loss=0.000120
+step=100 train_loss=0.000103
+held-out loss: 0.812929 -> 0.025405; reloaded=0.025405

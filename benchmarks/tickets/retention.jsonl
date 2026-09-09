@@ -1,0 +1,8 @@
+{"id":"retention-0","family":"retention","prompt":"What is 8 plus 7? Reply with only the number.","completion":"15"}
+{"id":"retention-1","family":"retention","prompt":"What is 9 minus 4? Reply with only the number.","completion":"5"}
+{"id":"retention-2","family":"retention","prompt":"Write the word HELLO in lowercase. Reply with only that word.","completion":"hello"}
+{"id":"retention-3","family":"retention","prompt":"What is the opposite of cold? Reply with one lowercase word.","completion":"hot"}
+{"id":"retention-4","family":"retention","prompt":"Sort these numbers from smallest to largest: 3, 1, 2. Reply only with a JSON array.","completion":"[1,2,3]"}
+{"id":"retention-5","family":"retention","prompt":"How many days are in one week? Reply with only the number.","completion":"7"}
+{"id":"retention-6","family":"retention","prompt":"Repeat exactly this word and nothing else: maple","completion":"maple"}
+{"id":"retention-7","family":"retention","prompt":"Translate the Spanish word 'gracias' into English. Reply with only the two lowercase words.","completion":"thank you"}

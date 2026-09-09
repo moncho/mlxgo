@@ -1,0 +1,16 @@
+{
+  "version": "tickets-v1",
+  "origin": "Synthetic, handwritten templates; no customer data. Not a real-world capability benchmark.",
+  "sha256": {
+    "retention.jsonl": "d59b75f6580a044283cf0815ef6c06784907365af115c4c6aef45f85b5758aec",
+    "test.jsonl": "af192db05e496f149c117719f329f5dd5a5124c4cb425898859b621d0f68e6da",
+    "train.jsonl": "d8dbf1c149db8b3963834fdff489585362a9565e6b76ac3cb8cd1293c22d99da",
+    "valid.jsonl": "f232873d353d635f53461de821ecc4a863c7aa8ee4920f8ffcaa83e5d6819447"
+  },
+  "counts": {
+    "retention": 8,
+    "test": 96,
+    "train": 192,
+    "valid": 48
+  }
+}

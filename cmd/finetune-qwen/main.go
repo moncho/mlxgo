@@ -21,14 +21,15 @@ func main() {
 	batch := flag.Int("batch-size", 2, "examples accumulated per optimizer step")
 	rank := flag.Int("rank", 4, "LoRA rank")
 	lr := flag.Float64("learning-rate", 0.001, "AdamW learning rate")
+	maxGradNorm := flag.Float64("max-grad-norm", 1, "global gradient norm limit (0 disables clipping)")
 	maxLength := flag.Int("max-length", 128, "maximum input tokens per example")
 	flag.Parse()
-	if err := run(*dir, *train, *valid, *out, *steps, *batch, *rank, float32(*lr), *maxLength); err != nil {
+	if err := run(*dir, *train, *valid, *out, *steps, *batch, *rank, float32(*lr), float32(*maxGradNorm), *maxLength); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run(dir, trainPath, validPath, out string, steps, batch, rank int, lr float32, maxLength int) error {
+func run(dir, trainPath, validPath, out string, steps, batch, rank int, lr, maxGradNorm float32, maxLength int) error {
 	if err := mlx.SetDefaultGPU(); err != nil {
 		return err
 	}
@@ -67,7 +68,7 @@ func run(dir, trainPath, validPath, out string, steps, batch, rank int, lr float
 		return err
 	}
 	fmt.Printf("held-out loss before=%.6f; train=%d validation=%d examples\n", before, len(train), len(valid))
-	err = a.Train(w, train, qwen2.TrainOptions{Steps: steps, BatchSize: batch, LearningRate: lr, Seed: 42, Report: func(step int, loss float32) {
+	err = a.Train(w, train, qwen2.TrainOptions{Steps: steps, BatchSize: batch, LearningRate: lr, MaxGradNorm: maxGradNorm, Seed: 42, Report: func(step int, loss float32) {
 		if step == 1 || step%5 == 0 || step == steps {
 			fmt.Printf("step=%d train_loss=%.6f\n", step, loss)
 		}

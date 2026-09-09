@@ -137,6 +137,9 @@ type TrainOptions struct {
 	Steps, BatchSize          int
 	LearningRate, WeightDecay float32
 	Seed                      int64
+	// MaxGradNorm clips the global L2 norm after token-weighted accumulation.
+	// Zero disables clipping. Nonfinite gradient norms always fail before Update.
+	MaxGradNorm float32
 	// Report runs outside Batch and may safely call MLX.
 	Report func(step int, loss float32)
 }
@@ -153,6 +156,9 @@ func (a *Adapters) Train(w *Weights, data []Example, options TrainOptions) error
 	}
 	if options.Steps <= 0 || options.BatchSize <= 0 {
 		return fmt.Errorf("qwen2: positive steps and batch size required")
+	}
+	if options.MaxGradNorm < 0 || math.IsNaN(float64(options.MaxGradNorm)) || math.IsInf(float64(options.MaxGradNorm), 0) {
+		return fmt.Errorf("qwen2: max gradient norm must be finite and nonnegative")
 	}
 	optimizer, err := mlx.NewAdamW(options.LearningRate, options.WeightDecay)
 	if err != nil {
@@ -258,7 +264,12 @@ func (a *Adapters) Train(w *Weights, data []Example, options TrainOptions) error
 				_ = accumulated[i].Close()
 				accumulated[i] = avg
 			}
-			next, err := optimizer.Update(a.Params, accumulated)
+			clipped, _, err := mlx.ClipGradNorm(accumulated, options.MaxGradNorm)
+			if err != nil {
+				return err
+			}
+			defer mlx.CloseArrays(clipped)
+			next, err := optimizer.Update(a.Params, clipped)
 			if err != nil {
 				return err
 			}

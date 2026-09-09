@@ -146,7 +146,8 @@ engineering demonstration, not a general capability benchmark. The command
 requires validation loss to improve and checks that reloading adapters
 reproduces it. It saves only float32 LoRA factors and metadata; bf16 base
 weights remain frozen. The default rank is 4, alpha is 4, batch size is 2,
-learning rate is 0.001, and training lasts 30 AdamW steps.
+learning rate is 0.001, global gradient norm limit is 1, and training lasts
+30 AdamW steps.
 
 For your own data, use JSONL records in separate training and validation files:
 
@@ -161,8 +162,12 @@ go run -tags mlx ./cmd/finetune-qwen -train train.jsonl -valid valid.jsonl \
 ```
 
 Prompt tokens are masked out of the loss. Gradients are accumulated across
-variable-length examples and averaged by the number of completion tokens;
-examples are processed individually, so padding is unnecessary. Overlong
+variable-length examples and averaged by the number of completion tokens.
+Global L2 gradient clipping is applied after averaging, before AdamW; use
+`-max-grad-norm 0` to disable clipping. Nonfinite gradient norms are rejected
+before updating parameters or optimizer state. The library exposes this as
+`mlx.ClipGradNorm`; `qwen2.TrainOptions.MaxGradNorm` defaults to zero (disabled).
+Examples are processed individually, so padding is unnecessary. Overlong
 examples are rejected rather than truncated. Keep validation examples separate
 from training. Memory use grows with sequence length and vocabulary logits;
 this implementation has no activation checkpointing or quantization.
@@ -172,6 +177,16 @@ another checkpoint or incompatible configuration fails. Each training call
 starts fresh AdamW moments; adapter files are not full optimizer checkpoints.
 Models, caches, adapters and optimizers must not be mutated or closed while in
 use. A cache belongs to one generation, and must be discarded after an error.
+
+### Extraction Benchmark
+
+The [ticket extraction benchmark](benchmarks/tickets/README.md) compares the
+base model with trained adapters on held-out support-ticket wording. It includes
+192 training, 48 validation, and 96 test examples, plus eight unrelated retention
+prompts. Reports contain every prediction, strict JSON/schema and field scores,
+timings, process peak RSS, and checkpoint/dataset hashes. The data is synthetic;
+this is a reproducible application-shaped experiment, not a real-world accuracy
+claim. Run `go run ./cmd/bench-qwen -mode prepare` without MLX to recreate the data.
 
 ### Reference Verification
 
