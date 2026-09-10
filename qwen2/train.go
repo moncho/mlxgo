@@ -140,13 +140,21 @@ type TrainOptions struct {
 	// MaxGradNorm clips the global L2 norm after token-weighted accumulation.
 	// Zero disables clipping. Nonfinite gradient norms always fail before Update.
 	MaxGradNorm float32
+	// ResumeFrom restores a full training checkpoint before taking Steps additional
+	// steps. All training settings and the ordered tokenized dataset must match.
+	ResumeFrom string
+	// CheckpointPath saves full state after the final step and every CheckpointEvery
+	// steps when positive. Zero means final-only. Saves replace the file atomically.
+	CheckpointPath  string
+	CheckpointEvery int
 	// Report runs outside Batch and may safely call MLX.
 	Report func(step int, loss float32)
 }
 
 // Train updates only LoRA parameters using AdamW. Each batch accumulates
 // token-weighted gradients one example at a time to bound activation memory.
-// A new call starts fresh optimizer moments; saved adapters are not optimizer checkpoints.
+// Without ResumeFrom, a new call starts fresh optimizer moments. Adapter-only
+// files cannot resume training. Report receives absolute, completed step numbers.
 func (a *Adapters) Train(w *Weights, data []Example, options TrainOptions) error {
 	if err := a.validate(); err != nil {
 		return err
@@ -157,12 +165,31 @@ func (a *Adapters) Train(w *Weights, data []Example, options TrainOptions) error
 	if options.Steps <= 0 || options.BatchSize <= 0 {
 		return fmt.Errorf("qwen2: positive steps and batch size required")
 	}
+	if options.Steps > math.MaxInt/options.BatchSize {
+		return fmt.Errorf("qwen2: training step count overflow")
+	}
 	if options.MaxGradNorm < 0 || math.IsNaN(float64(options.MaxGradNorm)) || math.IsInf(float64(options.MaxGradNorm), 0) {
 		return fmt.Errorf("qwen2: max gradient norm must be finite and nonnegative")
+	}
+	if options.CheckpointEvery < 0 || options.CheckpointEvery > 0 && options.CheckpointPath == "" {
+		return fmt.Errorf("qwen2: checkpoint interval requires a path and must be nonnegative")
 	}
 	optimizer, err := mlx.NewAdamW(options.LearningRate, options.WeightDecay)
 	if err != nil {
 		return err
+	}
+	orderState := newTrainingOrder(options.Seed, len(data))
+	startStep := 0
+	dataHash := ""
+	if options.ResumeFrom != "" || options.CheckpointPath != "" {
+		dataHash = trainingDataHash(data)
+	}
+	if options.ResumeFrom != "" {
+		_ = optimizer.Close()
+		optimizer, orderState, startStep, err = a.restoreTraining(options.ResumeFrom, dataHash, len(data), options)
+		if err != nil {
+			return err
+		}
 	}
 	defer optimizer.Close()
 	var current Example
@@ -181,9 +208,6 @@ func (a *Adapters) Train(w *Weights, data []Example, options TrainOptions) error
 		return err
 	}
 	defer vg.Close()
-	rng := rand.New(rand.NewSource(options.Seed))
-	order := rng.Perm(len(data))
-	cursor := 0
 	for step := 0; step < options.Steps; step++ {
 		var batchLoss float32
 		err := mlx.Batch(func() error {
@@ -192,12 +216,7 @@ func (a *Adapters) Train(w *Weights, data []Example, options TrainOptions) error
 			tokens := 0
 			lossSum := float64(0)
 			for range options.BatchSize {
-				if cursor == len(order) {
-					order = rng.Perm(len(data))
-					cursor = 0
-				}
-				current = data[order[cursor]]
-				cursor++
+				current = data[orderState.next()]
 				values, grads, err := vg.Apply(a.Params...)
 				if err != nil {
 					return err
@@ -279,13 +298,41 @@ func (a *Adapters) Train(w *Weights, data []Example, options TrainOptions) error
 			return nil
 		})
 		if err != nil {
-			return fmt.Errorf("qwen2: training step %d: %w", step+1, err)
+			return fmt.Errorf("qwen2: training step %d: %w", startStep+step+1, err)
+		}
+		completed := startStep + step + 1
+		if options.CheckpointPath != "" && (step+1 == options.Steps || options.CheckpointEvery > 0 && completed%options.CheckpointEvery == 0) {
+			if err := a.saveTraining(options.CheckpointPath, optimizer, orderState, dataHash, options); err != nil {
+				return fmt.Errorf("qwen2: step %d completed but checkpoint save failed: %w", completed, err)
+			}
 		}
 		if options.Report != nil {
-			options.Report(step+1, batchLoss)
+			options.Report(completed, batchLoss)
 		}
 	}
 	return nil
+}
+
+type trainingOrder struct {
+	rng           *rand.Rand
+	order         []int
+	cursor, epoch int
+}
+
+func newTrainingOrder(seed int64, n int) *trainingOrder {
+	rng := rand.New(rand.NewSource(seed))
+	return &trainingOrder{rng: rng, order: rng.Perm(n)}
+}
+
+func (s *trainingOrder) next() int {
+	if s.cursor == len(s.order) {
+		s.order = s.rng.Perm(len(s.order))
+		s.cursor = 0
+		s.epoch++
+	}
+	i := s.order[s.cursor]
+	s.cursor++
+	return i
 }
 
 func finiteLoss(loss float32) error {

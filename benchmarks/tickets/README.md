@@ -59,5 +59,7 @@ a command failure. The training command separately checks validation-loss
 improvement and exact loss reproduction after adapter reload.
 
 The adapter is an inference artifact, **not a resumable training checkpoint**.
-Each training invocation starts fresh optimizer moments and data ordering.
-Full training-state checkpoints remain necessary before moving to long runs.
+For longer runs, add `-checkpoint checkpoints/tickets-training.safetensors
+-checkpoint-every 10` to the training command, then use `-resume` with that file
+and the same recipe and training data. `-steps` specifies additional steps.
+See the root README's resumable-training section for format and safety details.

@@ -28,6 +28,9 @@ func (o *AdamW) Update(params, grads []Array) ([]Array, error) {
 	if o == nil || o.closed {
 		return nil, fmt.Errorf("mlxgo: AdamW is closed")
 	}
+	if o.step == math.MaxInt {
+		return nil, fmt.Errorf("mlxgo: AdamW step overflow")
+	}
 	if len(params) == 0 || len(params) != len(grads) || o.step > 0 && len(params) != len(o.first) {
 		return nil, fmt.Errorf("mlxgo: incompatible AdamW parameter count")
 	}

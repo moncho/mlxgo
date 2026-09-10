@@ -17,19 +17,26 @@ func main() {
 	train := flag.String("train", "qwen2/testdata/train.jsonl", "training JSONL")
 	valid := flag.String("valid", "qwen2/testdata/valid.jsonl", "held-out JSONL")
 	out := flag.String("out", "checkpoints/qwen-lora.safetensors", "output adapters (overwrites)")
-	steps := flag.Int("steps", 30, "optimizer steps")
+	steps := flag.Int("steps", 30, "additional optimizer steps (also when resuming)")
 	batch := flag.Int("batch-size", 2, "examples accumulated per optimizer step")
 	rank := flag.Int("rank", 4, "LoRA rank")
 	lr := flag.Float64("learning-rate", 0.001, "AdamW learning rate")
 	maxGradNorm := flag.Float64("max-grad-norm", 1, "global gradient norm limit (0 disables clipping)")
 	maxLength := flag.Int("max-length", 128, "maximum input tokens per example")
+	resume := flag.String("resume", "", "full training checkpoint to resume")
+	checkpoint := flag.String("checkpoint", "", "full training checkpoint output (atomic replacement)")
+	every := flag.Int("checkpoint-every", 0, "save every N completed steps; 0 saves only at the end")
 	flag.Parse()
-	if err := run(*dir, *train, *valid, *out, *steps, *batch, *rank, float32(*lr), float32(*maxGradNorm), *maxLength); err != nil {
+	options := qwen2.TrainOptions{Steps: *steps, BatchSize: *batch, LearningRate: float32(*lr), MaxGradNorm: float32(*maxGradNorm), Seed: 42, ResumeFrom: *resume, CheckpointPath: *checkpoint, CheckpointEvery: *every}
+	if err := run(*dir, *train, *valid, *out, *rank, *maxLength, options); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func run(dir, trainPath, validPath, out string, steps, batch, rank int, lr, maxGradNorm float32, maxLength int) error {
+func run(dir, trainPath, validPath, out string, rank, maxLength int, options qwen2.TrainOptions) error {
+	if err := validatePaths(dir, trainPath, validPath, out, options); err != nil {
+		return err
+	}
 	if err := mlx.SetDefaultGPU(); err != nil {
 		return err
 	}
@@ -67,12 +74,15 @@ func run(dir, trainPath, validPath, out string, steps, batch, rank int, lr, maxG
 	if err != nil {
 		return err
 	}
-	fmt.Printf("held-out loss before=%.6f; train=%d validation=%d examples\n", before, len(train), len(valid))
-	err = a.Train(w, train, qwen2.TrainOptions{Steps: steps, BatchSize: batch, LearningRate: lr, MaxGradNorm: maxGradNorm, Seed: 42, Report: func(step int, loss float32) {
-		if step == 1 || step%5 == 0 || step == steps {
+	fmt.Printf("base-model held-out loss=%.6f; train=%d validation=%d examples\n", before, len(train), len(valid))
+	localStep := 0
+	options.Report = func(step int, loss float32) {
+		localStep++
+		if localStep == 1 || step%5 == 0 || localStep == options.Steps {
 			fmt.Printf("step=%d train_loss=%.6f\n", step, loss)
 		}
-	}})
+	}
+	err = a.Train(w, train, options)
 	if err != nil {
 		return err
 	}
@@ -103,4 +113,47 @@ func run(dir, trainPath, validPath, out string, steps, batch, rank int, lr, maxG
 		return fmt.Errorf("held-out loss did not improve; adapters saved for inspection")
 	}
 	return nil
+}
+
+func validatePaths(dir, train, valid, out string, options qwen2.TrainOptions) error {
+	inputs := []string{train, valid, filepath.Join(dir, "config.json"), filepath.Join(dir, "tokenizer.json"), filepath.Join(dir, "model.safetensors")}
+	for _, output := range []string{out, options.CheckpointPath} {
+		if output == "" {
+			continue
+		}
+		for _, input := range inputs {
+			if samePath(output, input) {
+				return fmt.Errorf("output %s would overwrite input %s", output, input)
+			}
+		}
+	}
+	if samePath(out, options.CheckpointPath) || samePath(out, options.ResumeFrom) {
+		return fmt.Errorf("adapter output and training checkpoint must use different paths")
+	}
+	return nil
+}
+
+func samePath(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	left, le := os.Stat(a)
+	right, re := os.Stat(b)
+	if le == nil && re == nil && os.SameFile(left, right) {
+		return true
+	}
+	canonical := func(path string) string {
+		abs, err := filepath.Abs(path)
+		if err != nil {
+			return path
+		}
+		if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+			return resolved
+		}
+		if parent, err := filepath.EvalSymlinks(filepath.Dir(abs)); err == nil {
+			return filepath.Join(parent, filepath.Base(abs))
+		}
+		return abs
+	}
+	return canonical(a) == canonical(b)
 }
