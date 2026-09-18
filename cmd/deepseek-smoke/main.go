@@ -8,11 +8,13 @@ import (
 	"github.com/moncho/mlxgo/deepseek"
 	"github.com/moncho/mlxgo/lm"
 	"os"
+	"path/filepath"
 )
 
 func run() error {
 	path := flag.String("fixture", "deepseek/testdata/model.json", "untrained reduced-model fixture")
 	device := flag.String("device", "gpu", "cpu or gpu")
+	export := flag.String("export", "", "export synthetic bundle to a new directory")
 	flag.Parse()
 	switch *device {
 	case "cpu":
@@ -63,6 +65,22 @@ func run() error {
 		return err
 	}
 	defer model.Close()
+	if *export != "" {
+		data, err := json.MarshalIndent(f.Config, "", "  ")
+		if err != nil {
+			return err
+		}
+		if err = os.Mkdir(*export, 0755); err != nil {
+			return err
+		}
+		if err = os.WriteFile(filepath.Join(*export, "config.json"), data, 0644); err != nil {
+			return err
+		}
+		if err = mlx.SaveSafetensors(filepath.Join(*export, "model.safetensors"), weights, map[string]string{"synthetic": "true", "format": deepseek.Float32Format, "reference_revision": f.Revision}); err != nil {
+			return err
+		}
+		fmt.Printf("Exported synthetic bundle: %s\n", *export)
+	}
 	session, err := model.NewSession()
 	if err != nil {
 		return err

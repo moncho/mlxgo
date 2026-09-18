@@ -6,6 +6,7 @@ import (
 	mlx "github.com/moncho/mlxgo"
 	"github.com/moncho/mlxgo/lm"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -67,4 +68,55 @@ func TestSharedSessionAdapter(t *testing.T) {
 			a.Close()
 		})
 	}
+}
+
+func TestSessionWithTrainedAdapters(t *testing.T) {
+	if err := mlx.SetDefaultGPU(); err != nil {
+		t.Fatal(err)
+	}
+	c := tinyConfig()
+	w := tinyWeights(t, c)
+	a, err := NewAdapters(c, 2, 2, 42, strings.Repeat("0", 64))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	if err = a.Train(w, []Example{{Inputs: []int32{1, 2, 3}, Targets: []int32{7, 7, 7}}}, TrainOptions{Steps: 3, BatchSize: 1, LearningRate: .02, Seed: 42}); err != nil {
+		t.Fatal(err)
+	}
+	s, err := NewSessionWithAdapters(w, c, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	var all []int32
+	for _, ids := range [][]int32{{1, 2, 3}, {4}, {5}} {
+		all = append(all, ids...)
+		got, err := s.Step(ids)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, err := a.Forward(w, all, nil)
+		if err != nil {
+			got.Close()
+			t.Fatal(err)
+		}
+		maxError(t, floatData(t, got), floatData(t, want), 1e-4)
+		got.Close()
+		want.Close()
+	}
+	if _, err := NewSessionWithAdapters(w, c, nil); err == nil {
+		t.Fatal("accepted nil adapters")
+	}
+	bad := c
+	bad.MaxPositions++
+	if _, err := NewSessionWithAdapters(w, bad, a); err == nil {
+		t.Fatal("accepted mismatched config")
+	}
+	s.Close()
+	out, err := a.Forward(w, []int32{1}, nil)
+	if err != nil {
+		t.Fatal("session closed borrowed adapters:", err)
+	}
+	out.Close()
 }

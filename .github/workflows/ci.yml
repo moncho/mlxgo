@@ -45,3 +45,5 @@ jobs:
       - run: CGO_ENABLED=1 go run -tags mlx ./cmd/autograd-linear
       - run: CGO_ENABLED=1 go run -tags mlx ./cmd/finetune-mlp
       - run: CGO_ENABLED=1 go run -tags mlx ./cmd/deepseek-smoke
+      - run: CGO_ENABLED=1 go run -tags mlx ./cmd/deepseek-smoke -export "$RUNNER_TEMP/deepseek-synthetic"
+      - run: CGO_ENABLED=1 go run -tags mlx ./cmd/generate -model "$RUNNER_TEMP/deepseek-synthetic" -tokens 1,5,2,9,4 -max-tokens 4

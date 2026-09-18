@@ -55,3 +55,28 @@ func TestHuggingFaceParity(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestValidateVocabSize(t *testing.T) {
+	tok, err := Load("testdata/tokenizer.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var largest int32
+	for id := range tok.reverse {
+		largest = max(largest, id)
+	}
+	if err := tok.ValidateVocabSize(int(largest) + 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := tok.ValidateVocabSize(int(largest) + 100); err != nil {
+		t.Fatal(err)
+	}
+	for _, size := range []int{0, -1, int(largest)} {
+		if err := tok.ValidateVocabSize(size); err == nil {
+			t.Fatalf("accepted %d", size)
+		}
+	}
+	if err := (*Tokenizer)(nil).ValidateVocabSize(10); err == nil {
+		t.Fatal("accepted nil tokenizer")
+	}
+}

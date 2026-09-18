@@ -120,6 +120,12 @@ from a normal Terminal session with Metal access.
 
 ## Qwen Inference And LoRA
 
+`cmd/generate` uses the [common local loader](inference/README.md). It selects
+the architecture from `config.json`; `-device gpu` (default) or `-device cpu`
+selects the backend. Applications can use `inference.Open` and `Model.Generate`
+without importing an architecture package. Experimental DeepSeek bundles use
+the same command with `-tokens`, but still cannot generate pretrained text.
+
 Download the public bf16 checkpoint once (about 1 GB) with the Hugging Face CLI:
 
 ```sh
@@ -129,7 +135,8 @@ hf download Qwen/Qwen2.5-0.5B-Instruct config.json model.safetensors tokenizer.j
 go run -tags mlx ./cmd/generate -prompt "Explain why the sky is blue in one sentence."
 ```
 
-Generation runs entirely in Go through MLX on the GPU. It uses the Qwen chat
+Generation runs entirely in Go through MLX, with GPU by default and optional
+CPU selection. It uses the Qwen chat
 template, greedy decoding, tied embeddings, and a concatenating KV cache.
 Only the standard Qwen2 architecture with SiLU, full attention, unscaled RoPE,
 tied embeddings, zero dropout, and a single bf16 safetensors file is supported.

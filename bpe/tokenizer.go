@@ -156,6 +156,20 @@ func (t *Tokenizer) SpecialID(content string) (int32, bool) {
 	return 0, false
 }
 
+// ValidateVocabSize checks that every tokenizer ID is addressable by the model.
+// The model may have padded vocabulary rows with no corresponding token.
+func (t *Tokenizer) ValidateVocabSize(size int) error {
+	if t == nil || size <= 0 {
+		return fmt.Errorf("bpe: tokenizer and positive vocabulary size required")
+	}
+	for id := range t.reverse {
+		if int64(id) >= int64(size) {
+			return fmt.Errorf("bpe: token ID %d exceeds model vocabulary size %d", id, size)
+		}
+	}
+	return nil
+}
+
 // Encode recognizes literal added tokens before normalizing ordinary text.
 func (t *Tokenizer) Encode(s string) []int32 {
 	ids := make([]int32, 0)

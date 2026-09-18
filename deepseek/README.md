@@ -22,6 +22,12 @@ The example uses checked-in deterministic synthetic weights: 8 layers, 16,488
 parameters, vocabulary size 32, and a 32-position context. It prints generated
 token IDs, not text. No model download or Python environment is required.
 
+To save these synthetic weights as a local bundle, pass
+`-export models/deepseek-synthetic` (the directory must not already exist).
+The [common loader and generation command](../inference/README.md) can then
+load it by configuration and generate raw token IDs. This does not convert or
+add support for released weights.
+
 `NewModel(config, parameters)` validates all parameter names, shapes and dtypes
 and retains its own handles. `Config.ParameterShapes` defines the float32
 parameter contract. `Model.Forward` computes all logits in a temporary session.
