@@ -176,6 +176,10 @@ func Log(_ Array) (Array, error) {
 	return Array{}, errBuiltWithoutMLX
 }
 
+func Log1p(_ Array) (Array, error) {
+	return Array{}, errBuiltWithoutMLX
+}
+
 func Negative(_ Array) (Array, error) {
 	return Array{}, errBuiltWithoutMLX
 }

@@ -4,6 +4,11 @@ Go bindings for Apple's MLX through the official MLX C bridge, with array,
 autograd and optimizer APIs, Qwen2.5-0.5B inference, and LoRA fine-tuning.
 The higher-level model packages are experimental and deliberately narrow.
 
+The [DeepSeek experimental package](deepseek/README.md) runs a reduced float32
+text backbone with sparse attention, MoE, residual mixing and per-session caches.
+It shares an inference interface and greedy decoder (`lm`) with Qwen. It does
+**not** yet load or run released DeepSeek-V4.1-Flash checkpoints.
+
 MLX itself does not expose an official Go API. The supported native path is:
 
 ```text

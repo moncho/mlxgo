@@ -432,6 +432,13 @@ func Log(a Array) (Array, error) {
 	})
 }
 
+// Log1p returns log(1+a) elementwise without losing precision for small a.
+func Log1p(a Array) (Array, error) {
+	return unaryOp(a, "mlx_log1p", func(out *C.mlx_array, input C.mlx_array, stream C.mlx_stream) C.int {
+		return C.mlx_log1p(out, input, stream)
+	})
+}
+
 // Negative returns -a.
 func Negative(a Array) (Array, error) {
 	return unaryOp(a, "mlx_negative", func(out *C.mlx_array, input C.mlx_array, stream C.mlx_stream) C.int {
