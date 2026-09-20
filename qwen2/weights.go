@@ -2,10 +2,10 @@ package qwen2
 
 import (
 	"fmt"
-	"path/filepath"
 	"slices"
 
 	"github.com/moncho/mlxgo"
+	"github.com/moncho/mlxgo/checkpoint"
 )
 
 type Layer struct {
@@ -44,13 +44,13 @@ func (w *Weights) Close() error {
 	return mlx.CloseArrays(w.Arrays())
 }
 
-// Load validates and loads the single-file Hugging Face checkpoint. Projection
+// Load validates and loads a single-file or indexed Hugging Face checkpoint. Projection
 // weights are transposed to the [in, out] layout expected by mlx.Linear.
 func Load(dir string, c Config) (*Weights, error) {
 	if err := c.Validate(); err != nil {
 		return nil, err
 	}
-	f, err := mlx.LoadSafetensors(filepath.Join(dir, "model.safetensors"))
+	f, err := checkpoint.Open(dir)
 	if err != nil {
 		return nil, err
 	}

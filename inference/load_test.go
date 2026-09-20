@@ -111,13 +111,13 @@ func TestInspectRejectsUnsupported(t *testing.T) {
 			t.Fatalf("got %v", err)
 		}
 	})
-	t.Run("shards", func(t *testing.T) {
+	t.Run("config inspection does not open weights", func(t *testing.T) {
 		dir := t.TempDir()
 		writeConfig(t, dir, qwenConfig())
 		if err := os.WriteFile(filepath.Join(dir, "model.safetensors.index.json"), []byte("{}"), 0600); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := Inspect(dir); !errors.Is(err, ErrUnsupported) {
+		if _, err := Inspect(dir); err != nil {
 			t.Fatalf("got %v", err)
 		}
 	})

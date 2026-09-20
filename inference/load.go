@@ -13,6 +13,7 @@ import (
 
 	mlx "github.com/moncho/mlxgo"
 	"github.com/moncho/mlxgo/bpe"
+	"github.com/moncho/mlxgo/checkpoint"
 	"github.com/moncho/mlxgo/deepseek"
 	"github.com/moncho/mlxgo/lm"
 	"github.com/moncho/mlxgo/qwen2"
@@ -98,11 +99,6 @@ func readManifest(dir string) (manifest, error) {
 	default:
 		return m, fmt.Errorf("%w: model_type=%q format=%q; released DeepSeek checkpoints are not supported", ErrUnsupported, h.ModelType, h.Format)
 	}
-	if _, err = os.Stat(filepath.Join(dir, "model.safetensors.index.json")); err == nil {
-		return m, fmt.Errorf("%w: sharded checkpoints; expected one model.safetensors", ErrUnsupported)
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return m, err
-	}
 	return m, nil
 }
 
@@ -131,7 +127,7 @@ type Model struct {
 	eos        []int32
 }
 
-// Open loads a local config.json + model.safetensors bundle. Qwen additionally
+// Open loads a local config.json with single-file or indexed safetensors weights. Qwen additionally
 // requires tokenizer.json and uses the existing single-turn Qwen chat format.
 // Experimental DeepSeek bundles support token IDs only. No remote code or
 // downloaded Jinja template is executed. The caller selects the MLX device.
@@ -171,7 +167,7 @@ func Open(dir string, options Options) (*Model, error) {
 		}
 		var adapters *qwen2.Adapters
 		if options.Adapters != "" {
-			hash, e := qwen2.CheckpointHash(filepath.Join(dir, "model.safetensors"))
+			hash, e := qwen2.CheckpointHash(dir)
 			if e != nil {
 				w.Close()
 				return nil, e
@@ -196,7 +192,7 @@ func Open(dir string, options Options) (*Model, error) {
 			return errors.Join(err, w.Close())
 		}
 	} else {
-		f, err := mlx.LoadSafetensors(filepath.Join(dir, "model.safetensors"))
+		f, err := checkpoint.Open(dir)
 		if err != nil {
 			return nil, err
 		}

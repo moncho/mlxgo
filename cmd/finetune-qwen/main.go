@@ -9,6 +9,7 @@ import (
 
 	"github.com/moncho/mlxgo"
 	"github.com/moncho/mlxgo/bpe"
+	"github.com/moncho/mlxgo/checkpoint"
 	"github.com/moncho/mlxgo/qwen2"
 )
 
@@ -56,7 +57,7 @@ func run(dir, trainPath, validPath, out string, rank, maxLength int, options qwe
 	if err != nil {
 		return err
 	}
-	hash, err := qwen2.CheckpointHash(filepath.Join(dir, "model.safetensors"))
+	hash, err := qwen2.CheckpointHash(dir)
 	if err != nil {
 		return err
 	}
@@ -117,6 +118,11 @@ func run(dir, trainPath, validPath, out string, rank, maxLength int, options qwe
 
 func validatePaths(dir, train, valid, out string, options qwen2.TrainOptions) error {
 	inputs := []string{train, valid, filepath.Join(dir, "config.json"), filepath.Join(dir, "tokenizer.json"), filepath.Join(dir, "model.safetensors")}
+	files, err := checkpoint.SourceFiles(dir)
+	if err != nil {
+		return err
+	}
+	inputs = append(inputs, files...)
 	for _, output := range []string{out, options.CheckpointPath} {
 		if output == "" {
 			continue

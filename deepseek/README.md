@@ -33,6 +33,11 @@ The [common loader and generation command](../inference/README.md) can then
 load it by configuration and generate raw token IDs. This does not convert or
 add support for released weights.
 
+The common loader also accepts these experimental float32 bundles split across
+indexed safetensors shards. The [checkpoint package](../checkpoint/README.md)
+validates and routes those files; released tensor mapping and quantization are
+still unsupported, and sharding does not reduce total parameter memory.
+
 `NewModel(config, parameters)` validates all parameter names, shapes and dtypes
 and retains its own handles. `Config.ParameterShapes` defines the float32
 parameter contract. `Model.Forward` computes all logits in a temporary session.
@@ -160,7 +165,7 @@ reference code introduce these requirements beyond memory capacity:
 | Sparse indexer | Float32 scoring, candidate filtering and sharing implemented; quantized scoring and optimized top-k remain |
 | Single-pass mHC | Complete block wiring implemented and compared through model logits |
 | Engram | Float32 remapping/hash/lookup/gating implemented; released tokenizer metadata, FP8 table loading and rounding remain |
-| Checkpoint storage | Sharded names and shapes, mixed BF16/FP8/packed FP4, associated scaling conventions; not interchangeable with generic MLX affine quantization |
+| Checkpoint storage | Generic indexed safetensors loading implemented; released tensor mapping, mixed BF16/FP8/packed FP4 and scaling conventions remain unsupported and are not interchangeable with generic MLX affine quantization |
 | Cache quantization | Separate formats for sliding-window KV, compressed KV and index keys; disabling weight quantization alone does not disable these |
 | Text input/output | Official encoding rules and tokenizer integration; no assumption that the existing Qwen chat formatting applies |
 | Vision | DeepSeek-ViT, image processing, projection and vision-specific routing bias |

@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"math"
 	"math/rand"
 	"os"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/moncho/mlxgo"
 	"github.com/moncho/mlxgo/bpe"
+	"github.com/moncho/mlxgo/checkpoint"
 )
 
 // Adapters holds float32 LoRA factors for q/v projections in every layer.
@@ -27,18 +27,18 @@ type Adapters struct {
 	closed     bool
 }
 
-// CheckpointHash binds saved adapters to an exact base checkpoint, not just its shape.
+// CheckpointHash binds saved adapters to an exact base checkpoint, not just its
+// shape. A file keeps its raw SHA-256; a model directory resolves all shards via
+// checkpoint.Hash. Re-sharding changes identity even when tensor values match.
 func CheckpointHash(path string) (string, error) {
-	f, err := os.Open(path)
+	info, err := os.Stat(path)
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
+	if info.IsDir() {
+		return checkpoint.Hash(path)
 	}
-	return hex.EncodeToString(h.Sum(nil)), nil
+	return checkpoint.FileHash(path)
 }
 
 func NewAdapters(c Config, rank int, alpha float32, seed int64, baseSHA256 string) (*Adapters, error) {

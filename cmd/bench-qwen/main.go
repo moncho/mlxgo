@@ -120,7 +120,7 @@ func evaluate(dir, dataDir, split, adapterPath, out string, maxTokens int) error
 	if err != nil {
 		return err
 	}
-	modelHash, err := qwen2.CheckpointHash(filepath.Join(dir, "model.safetensors"))
+	modelHash, err := qwen2.CheckpointHash(dir)
 	if err != nil {
 		return err
 	}

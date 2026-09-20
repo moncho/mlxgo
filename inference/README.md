@@ -6,12 +6,12 @@ download anything, execute repository code, or evaluate chat-template scripts.
 
 | Bundle | Text generation | Raw token IDs | LoRA adapters |
 | --- | --- | --- | --- |
-| Standard Qwen2, single BF16 safetensors file | Fixed Qwen single-turn chat template | Yes | mlxgo q/v adapters |
+| Standard Qwen2, single or indexed BF16 safetensors | Fixed Qwen single-turn chat template | Yes | mlxgo q/v adapters |
 | `mlxgo.deepseek.float32.v1` experimental bundle | No | Yes | No |
 | Released DeepSeek-V4.1-Flash checkpoint | Unsupported | Unsupported | Unsupported |
 
 Qwen requires tied embeddings, SiLU, full attention, unscaled RoPE and zero
-dropout. Quantized or sharded checkpoints and unknown architectures return
+dropout. Quantized checkpoints and unknown architectures return
 errors. Every required tensor's shape and dtype is checked. DeepSeek bundles
 use `deepseek.Config` and `Config.ParameterShapes`, not the released checkpoint
 format; unknown configuration fields are rejected. Additional tensor entries
@@ -19,6 +19,12 @@ are not loaded. Optional float32 Engram uses prepared hash/token-map metadata
 and validated table/projection weights. Released FP8 Engram storage, vision,
 DSpark and production quantization remain future work, not capabilities implied
 by the common API.
+
+Both supported architectures accept `model.safetensors` or
+`model.safetensors.index.json` with local shard files, using the shared
+[checkpoint loader](../checkpoint/README.md). Index routing, all referenced
+headers and tensor byte ranges are validated before loading arrays. This adds
+storage support, not new architectures, quantization or memory offloading.
 
 ## Go API
 
@@ -43,12 +49,16 @@ func generate() error {
 
 Use `Options{Adapters: "checkpoints/qwen-lora.safetensors"}` to load a saved
 mlxgo adapter. Its base-checkpoint SHA-256 and configuration are validated.
+Existing single-file adapter identities are unchanged. Sharded identities include
+tensor routing and shard bytes, so repacking or renaming shards invalidates
+adapters tied to the previous layout.
 The existing `cmd/finetune-qwen` training workflow is unchanged; this loader
 provides a common inference path for its output, not architecture-independent
 training.
 
 `Inspect(dir)` validates configuration without loading native arrays and also
-works in the default stub build. `Info.Text` and `Info.Adapters` describe available
+works in the default stub build. It does not inspect weight files or their index;
+use `checkpoint.Inspect(dir)` for that. `Info.Text` and `Info.Adapters` describe available
 architecture support, not proof that files exist; `Open` additionally validates
 the tokenizer, special IDs and weights. A Qwen bundle requires `tokenizer.json`
 even when raw token generation will be used. Tokenizer IDs must fit the model's
@@ -105,6 +115,8 @@ go test -tags "mlx mlxruntime" ./...
 MLXGO_QWEN2_DIR="$PWD/models/Qwen2.5-0.5B-Instruct" \
 MLXGO_QWEN2_ADAPTERS="$PWD/checkpoints/qwen-lora.safetensors" \
   go test -tags "mlx mlxruntime" ./inference -run TestRealQwenLoaderParity -v
+MLXGO_QWEN2_DIR="$PWD/models/Qwen2.5-0.5B-Instruct" MLXGO_QWEN2_RESHARD=1 \
+  go test -tags "mlx mlxruntime" ./inference -run TestRealShardedQwen -v
 ```
 
 CI runs reduced Qwen BF16 loading with trained adapters, reduced DeepSeek CPU/GPU
@@ -112,3 +124,9 @@ generation, concurrent sessions, close-during-use, and bad-config/weight tests
 without downloading models. Real-checkpoint parity is opt-in: it compares the
 first 32 Qwen reference tokens and the existing architecture-specific generator,
 then repeats with saved adapters when supplied.
+
+CI also covers sharded reduced Qwen training/adapter reload, DeepSeek generation
+with and without Engram, and concurrent shard reads/close under the race detector.
+The opt-in real resharding test creates three temporary shards, checks all 32
+reference tokens, and cleans up. Allow roughly 1 GB of temporary disk space; it
+does not modify the original checkpoint or download weights.

@@ -141,7 +141,9 @@ Generation runs entirely in Go through MLX, with GPU by default and optional
 CPU selection. It uses the Qwen chat
 template, greedy decoding, tied embeddings, and a concatenating KV cache.
 Only the standard Qwen2 architecture with SiLU, full attention, unscaled RoPE,
-tied embeddings, zero dropout, and a single bf16 safetensors file is supported.
+tied embeddings, zero dropout, and bf16 safetensors weights is supported.
+Weights can be a single file or an indexed set of shards; see the
+[checkpoint loader](checkpoint/README.md) for validation and storage limits.
 Configuration and tensor mismatches return errors. The tokenizer is pure Go
 and supports Qwen2's byte-level BPE, NFC normalization, and added tokens.
 
@@ -186,8 +188,10 @@ examples are rejected rather than truncated. Keep validation examples separate
 from training. Memory use grows with sequence length and vocabulary logits;
 this implementation has no activation checkpointing or quantization.
 
-Adapters are bound to the exact base checkpoint SHA256. Loading them against
-another checkpoint or incompatible configuration fails. Each training call
+Adapters are bound to the exact base checkpoint SHA256. Single-file bundles
+retain their existing hash; sharded bundles hash the tensor routing and shard
+contents. Repacking or renaming shards changes this identity. Loading adapters
+against another checkpoint or incompatible configuration fails. Each training call
 starts fresh AdamW moments unless `ResumeFrom` is supplied; adapter-only files
 are not full optimizer checkpoints.
 Models, caches, adapters and optimizers must not be mutated or closed while in
