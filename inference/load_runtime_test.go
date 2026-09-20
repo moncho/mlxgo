@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -20,7 +21,10 @@ import (
 
 func exportFixture(t *testing.T, mutate func(map[string]mlx.Array)) string {
 	t.Helper()
-	f := readFixture(t)
+	return exportFixtureData(t, readFixture(t), mutate)
+}
+func exportFixtureData(t *testing.T, f fixture, mutate func(map[string]mlx.Array)) string {
+	t.Helper()
 	dir := t.TempDir()
 	writeConfig(t, dir, f.Config)
 	params := make(map[string]mlx.Array, len(f.Parameters))
@@ -43,6 +47,72 @@ func exportFixture(t *testing.T, mutate func(map[string]mlx.Array)) string {
 		t.Fatal(err)
 	}
 	return dir
+}
+
+func TestEngramBundle(t *testing.T) {
+	if err := mlx.SetDefaultGPU(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile("../deepseek/testdata/model_engram.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var f fixture
+	if err = json.Unmarshal(data, &f); err != nil {
+		t.Fatal(err)
+	}
+	var reference struct {
+		Tokens []int32
+		Cases  []struct{ Logits struct{ Data []float32 } }
+	}
+	if err = json.Unmarshal(data, &reference); err != nil {
+		t.Fatal(err)
+	}
+	dir := exportFixtureData(t, f, nil)
+	m, err := Open(dir, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+	if m.Info().Text || m.Info().Architecture != "deepseek_v41" {
+		t.Fatal("wrong Engram bundle capabilities")
+	}
+	s, err := m.NewSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	for pos, token := range reference.Tokens {
+		a, err := s.Step([]int32{token})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := a.Float32Data()
+		a.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := reference.Cases[0].Logits.Data[pos*f.Config.VocabSize : (pos+1)*f.Config.VocabSize]
+		if len(got) != len(want) {
+			t.Fatal("logit shape mismatch")
+		}
+		for i, v := range got {
+			if math.IsNaN(float64(v)) || math.Abs(float64(v-want[i])) > 2e-5 {
+				t.Fatalf("reloaded Engram logit %d/%d differs: %g != %g", pos, i, v, want[i])
+			}
+		}
+	}
+	// Missing Engram-specific tensors must not silently disable the component.
+	broken := exportFixtureData(t, f, func(params map[string]mlx.Array) {
+		key := fmt.Sprintf("layers.%d.engram.wkv.weight", f.Config.Engram.Layers[0])
+		a := params[key]
+		a.Close()
+		delete(params, key)
+	})
+	if m, err := Open(broken, Options{}); err == nil {
+		m.Close()
+		t.Fatal("accepted incomplete Engram weights")
+	}
 }
 
 func TestBundleGenerationAndLifetime(t *testing.T) {

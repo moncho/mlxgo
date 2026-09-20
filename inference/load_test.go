@@ -104,7 +104,7 @@ func TestInspectRejectsUnsupported(t *testing.T) {
 		b, _ := json.Marshal(readFixture(t).Config)
 		var c map[string]any
 		_ = json.Unmarshal(b, &c)
-		c["engram"] = true
+		c["vision"] = true
 		dir := t.TempDir()
 		writeConfig(t, dir, c)
 		if _, err := Inspect(dir); !errors.Is(err, ErrUnsupported) {

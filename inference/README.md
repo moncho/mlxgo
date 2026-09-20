@@ -15,8 +15,10 @@ dropout. Quantized or sharded checkpoints and unknown architectures return
 errors. Every required tensor's shape and dtype is checked. DeepSeek bundles
 use `deepseek.Config` and `Config.ParameterShapes`, not the released checkpoint
 format; unknown configuration fields are rejected. Additional tensor entries
-are not loaded. Engram, vision, DSpark and production quantization remain future
-work, not capabilities implied by the common API.
+are not loaded. Optional float32 Engram uses prepared hash/token-map metadata
+and validated table/projection weights. Released FP8 Engram storage, vision,
+DSpark and production quantization remain future work, not capabilities implied
+by the common API.
 
 ## Go API
 
@@ -89,6 +91,11 @@ go run -tags mlx ./cmd/generate -model models/deepseek-synthetic \
 Expected IDs are `[21 21 21 18]`. These synthetic weights do not represent a
 pretrained language model. `-tokens` and an explicit `-prompt` are mutually
 exclusive; DeepSeek text requests fail with `ErrTextUnsupported`.
+
+To exercise Engram too, export a separate bundle using
+`-fixture deepseek/testdata/model_engram.json -export models/deepseek-engram`.
+The same `cmd/generate -model models/deepseek-engram -tokens ...` path then uses
+its prepared metadata and Engram weights. It still produces raw synthetic IDs.
 
 ## Verification
 

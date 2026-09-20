@@ -4,7 +4,8 @@ Architectural forward methods, index selection and block wiring are unchanged.
 One cache-publication correction is explicitly recorded below. Replacements:
 float32 Linear, no-op cache quantization,
 CPU mathematical kernels from reference.py, all-position head output, and
-disabled Engram/vision/DSpark. This is NOT released-checkpoint parity.
+disabled vision/DSpark and optional float32 Engram with prepared synthetic
+tokenizer metadata. This is NOT released-checkpoint parity.
 """
 import argparse
 import ast
@@ -25,8 +26,9 @@ from reference import HASHES, REVISION, load_sources, sinkhorn, sparse_attention
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--source-dir", type=Path)
+parser.add_argument("--engram", action="store_true", help="Enable prepared float32 Engram in a separate fixture")
 args = parser.parse_args()
-sources = load_sources(args.source_dir)
+sources = load_sources(args.source_dir, engram=args.engram)
 
 
 class FloatLinear(nn.Linear):
@@ -52,11 +54,19 @@ namespace = dict(torch=torch, nn=nn, F=F, dist=dist, math=math,
                  fp4_act_quant=lambda *a, **k: None,
                  hc_split_sinkhorn=sinkhorn, sparse_attn=sparse_attention,
                  EngramLayout=NoEngram)
+if args.engram:
+    from engram_reference import prepare
+    from reference import ENGRAM_HASHES
+    engram_ns, tokenizer, engram_settings, engram_config = prepare(sources)
+    namespace.update(EngramLayout=engram_ns["EngramLayout"], NgramHashState=engram_ns["NgramHashState"],
+                     ParallelEngramEmbedding=nn.Embedding)
 names = {"set_dtype", "ModelArgs", "ParallelEmbedding", "RMSNorm",
          "precompute_freqs_cis", "apply_rotary_emb", "get_window_topk_idxs",
          "Compressor", "Indexer", "select_candidate_blocks", "Attention",
          "Gate", "Expert", "MoE", "Block", "ParallelHead",
          "make_identity_pre_mix", "SharedAttentionRuntime", "Transformer", "sample"}
+if args.engram:
+    names.add("Engram")
 nodes = [n for n in ast.parse(sources["model.py"]).body
          if isinstance(n, (ast.FunctionDef, ast.ClassDef)) and n.name in names]
 module = ast.Module(body=[ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")], level=0)] + nodes,
@@ -75,11 +85,15 @@ config = dict(format="mlxgo.deepseek.float32.v1", vocab_size=32, dim=8,
               index_n_heads=2, index_head_dim=8, index_topk=2,
               candidate_source_layer=4, candidate_topk_blocks=2, candidate_block_size=2,
               hyper=dict(Streams=3, Iterations=20, NormEpsilon=1e-20, Epsilon=1e-6))
-overrides = {k: v for k, v in config.items() if k not in ("format", "router", "hyper")}
+if args.engram:
+    config["engram"] = engram_config
+overrides = {k: v for k, v in config.items() if k not in ("format", "router", "hyper", "engram")}
 overrides.update(max_batch_size=1, n_mtp_layers=0, dtype="bf16", expert_dtype=None,
                  n_activated_experts=2, gate_temp=.7, route_scale=1.5,
                  hc_mult=3, hc_sinkhorn_iters=20, hc_eps=1e-6, norm_eps=1e-20,
                  temperature=0)
+if args.engram:
+    overrides.update(engram_settings)
 model_args = namespace["ModelArgs"](**overrides)
 torch.set_num_threads(1)
 torch.manual_seed(9217)
@@ -88,7 +102,7 @@ torch.manual_seed(9217)
 def fresh(state=None, yarn=False, publish_index_cache=True):
     namespace["shared_attn"] = namespace["SharedAttentionRuntime"]()
     model_args.original_seq_len = 4 if yarn else 0
-    model = namespace["Transformer"](model_args)
+    model = namespace["Transformer"](model_args, tokenizer=tokenizer) if args.engram else namespace["Transformer"](model_args)
     with torch.no_grad():
         if state is not None:
             model.load_state_dict(state, strict=True)
@@ -156,7 +170,7 @@ second = fresh()
 second_state = {k: v.clone() for k, v in second.state_dict().items()}
 second_logits = second(torch.tensor([tokens]))[1]
 
-result = dict(revision=REVISION, sha256=HASHES, torch=torch.__version__, seed=9217,
+result = dict(revision=REVISION, sha256=HASHES | (ENGRAM_HASHES if args.engram else {}), torch=torch.__version__, seed=9217,
               reference_adjustments=["Publish Indexer owner's existing k_cache before every invocation, including incomplete compression groups"],
               unpatched_reference_chunk_error=unpatched_error,
               config=config, parameters={k: tensor(v) for k, v in state.items()},
@@ -165,7 +179,11 @@ result = dict(revision=REVISION, sha256=HASHES, torch=torch.__version__, seed=92
               limitations=["Untrained float32 text backbone", "Cache quantization disabled",
                            "Sparse and Sinkhorn CUDA kernels replaced by CPU mathematical translations",
                            "Engram, vision, DSpark and pretrained tokenization disabled"])
-destination = Path(__file__).parent / "testdata" / "model.json"
+if args.engram:
+    result["limitations"][-1] = "Float32 Engram table, prepared synthetic token map; vision, DSpark and pretrained tokenization disabled"
+    import numpy, sympy, tokenizers
+    result["engram_metadata_versions"] = dict(numpy=numpy.__version__, sympy=sympy.__version__, tokenizers=tokenizers.__version__)
+destination = Path(__file__).parent / "testdata" / ("model_engram.json" if args.engram else "model.json")
 destination.write_text(json.dumps(result, separators=(",", ":")) + "\n")
 print(f"Wrote {len(state)} parameters, {len(cases)} decode schedules; {sum(v.numel() for v in state.values())} scalar parameters")
 print("Maximum reference chunk error:", max(case["reference_chunk_error"] for case in cases))

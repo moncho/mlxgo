@@ -91,6 +91,9 @@ func run() error {
 		return err
 	}
 	fmt.Printf("Untrained float32 DeepSeek text backbone (%d layers, %s)\n", f.Config.Layers, *device)
+	if f.Config.Engram != nil {
+		fmt.Printf("Engram enabled on layers %v (prepared synthetic token map)\n", f.Config.Engram.Layers)
+	}
 	fmt.Printf("Prompt token IDs: %v\nGenerated token IDs: %v\n", f.Tokens[:5], tokens)
 	fmt.Println("Synthetic weights only; this is not a pretrained text completion.")
 	return nil

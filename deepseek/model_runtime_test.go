@@ -58,7 +58,9 @@ func compareLogits(t *testing.T, got, want []float32) {
 }
 
 func TestReducedModelReference(t *testing.T) {
-	f := readModelFixture(t)
+	testReducedModelReference(t, readModelFixture(t))
+}
+func testReducedModelReference(t *testing.T, f modelFixture) {
 	for _, device := range []struct {
 		name string
 		set  func() error
@@ -114,7 +116,9 @@ func TestReducedModelReference(t *testing.T) {
 }
 
 func TestReducedSessionIsolation(t *testing.T) {
-	f := readModelFixture(t)
+	testReducedSessionIsolation(t, readModelFixture(t))
+}
+func testReducedSessionIsolation(t *testing.T, f modelFixture) {
 	for _, device := range []struct {
 		name string
 		set  func() error
@@ -168,10 +172,12 @@ func TestReducedSessionIsolation(t *testing.T) {
 }
 
 func TestReducedSessionLifecycle(t *testing.T) {
+	testReducedSessionLifecycle(t, readModelFixture(t))
+}
+func testReducedSessionLifecycle(t *testing.T, f modelFixture) {
 	if err := mlx.SetDefaultCPU(); err != nil {
 		t.Fatal(err)
 	}
-	f := readModelFixture(t)
 	m := modelFromFixture(t, f.Config, f.Parameters)
 	s, err := m.NewSession()
 	if err != nil {
@@ -236,7 +242,9 @@ func TestReducedSessionLifecycle(t *testing.T) {
 }
 
 func TestReducedGreedy(t *testing.T) {
-	f := readModelFixture(t)
+	testReducedGreedy(t, readModelFixture(t))
+}
+func testReducedGreedy(t *testing.T, f modelFixture) {
 	m := modelFromFixture(t, f.Config, f.Parameters)
 	s, err := m.NewSession()
 	if err != nil {

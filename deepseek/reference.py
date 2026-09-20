@@ -9,11 +9,12 @@ HASHES = {
     "model.py": "4e9ae23620edc8028ccc5d5fef552ab7fdc7dcd6f79608754fe9f67644056f65",
     "kernel.py": "1236c3507019ed176f5dba5e04bcea58867cf654818c6cf138ed4845398c2455",
 }
+ENGRAM_HASHES = {"engram.py": "11f35ecbead8150c35aa002b3d180ef290b05a25afe883a11884f94d476d3897"}
 
 
-def load_sources(directory=None):
+def load_sources(directory=None, engram=False):
     sources = {}
-    for name, checksum in HASHES.items():
+    for name, checksum in (HASHES | (ENGRAM_HASHES if engram else {})).items():
         if directory:
             source = (directory / name).read_bytes()
         else:

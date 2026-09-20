@@ -7,42 +7,44 @@ import (
 )
 
 // Config describes the experimental float32 text backbone, not the released
-// checkpoint format. Engram, vision, DSpark and quantization are not supported.
+// checkpoint format. Engram uses optional prepared metadata and float32 weights;
+// vision, DSpark and quantization are not supported.
 // Layer numbers are zero-based. A source publishes state to subsequent layers
 // until another source replaces it; changing ratio requires a new KV source.
 type Config struct {
-	Format          string       `json:"format"`
-	VocabSize       int          `json:"vocab_size"`
-	Dim             int          `json:"dim"`
-	InterDim        int          `json:"moe_inter_dim"`
-	Layers          int          `json:"n_layers"`
-	Heads           int          `json:"n_heads"`
-	Experts         int          `json:"n_routed_experts"`
-	Router          RouterConfig `json:"router"`
-	Limit           float32      `json:"swiglu_limit"`
-	QRank           int          `json:"q_lora_rank"`
-	HeadDim         int          `json:"head_dim"`
-	RopeDim         int          `json:"rope_head_dim"`
-	Groups          int          `json:"o_groups"`
-	ORank           int          `json:"o_lora_rank"`
-	Window          int          `json:"window_size"`
-	MaxSeq          int          `json:"max_seq_len"`
-	Ratios          []int        `json:"compress_ratios"`
-	KVSources       []int        `json:"kv_source_layers"`
-	IndexSources    []int        `json:"index_source_layers"`
-	RopeTheta       float64      `json:"rope_theta"`
-	CompressTheta   float64      `json:"compress_rope_theta"`
-	OriginalSeq     int          `json:"original_seq_len"`
-	RopeFactor      float64      `json:"rope_factor"`
-	BetaFast        float64      `json:"beta_fast"`
-	BetaSlow        float64      `json:"beta_slow"`
-	IndexHeads      int          `json:"index_n_heads"`
-	IndexDim        int          `json:"index_head_dim"`
-	IndexTopK       int          `json:"index_topk"`
-	CandidateSource int          `json:"candidate_source_layer"`
-	CandidateBlocks int          `json:"candidate_topk_blocks"`
-	CandidateSize   int          `json:"candidate_block_size"`
-	Hyper           HyperConfig  `json:"hyper"`
+	Format          string        `json:"format"`
+	VocabSize       int           `json:"vocab_size"`
+	Dim             int           `json:"dim"`
+	InterDim        int           `json:"moe_inter_dim"`
+	Layers          int           `json:"n_layers"`
+	Heads           int           `json:"n_heads"`
+	Experts         int           `json:"n_routed_experts"`
+	Router          RouterConfig  `json:"router"`
+	Limit           float32       `json:"swiglu_limit"`
+	QRank           int           `json:"q_lora_rank"`
+	HeadDim         int           `json:"head_dim"`
+	RopeDim         int           `json:"rope_head_dim"`
+	Groups          int           `json:"o_groups"`
+	ORank           int           `json:"o_lora_rank"`
+	Window          int           `json:"window_size"`
+	MaxSeq          int           `json:"max_seq_len"`
+	Ratios          []int         `json:"compress_ratios"`
+	KVSources       []int         `json:"kv_source_layers"`
+	IndexSources    []int         `json:"index_source_layers"`
+	RopeTheta       float64       `json:"rope_theta"`
+	CompressTheta   float64       `json:"compress_rope_theta"`
+	OriginalSeq     int           `json:"original_seq_len"`
+	RopeFactor      float64       `json:"rope_factor"`
+	BetaFast        float64       `json:"beta_fast"`
+	BetaSlow        float64       `json:"beta_slow"`
+	IndexHeads      int           `json:"index_n_heads"`
+	IndexDim        int           `json:"index_head_dim"`
+	IndexTopK       int           `json:"index_topk"`
+	CandidateSource int           `json:"candidate_source_layer"`
+	CandidateBlocks int           `json:"candidate_topk_blocks"`
+	CandidateSize   int           `json:"candidate_block_size"`
+	Hyper           HyperConfig   `json:"hyper"`
+	Engram          *EngramConfig `json:"engram,omitempty"`
 }
 
 const Float32Format = "mlxgo.deepseek.float32.v1"
@@ -50,6 +52,14 @@ const Float32Format = "mlxgo.deepseek.float32.v1"
 func (c Config) Validate() error {
 	if c.Format != Float32Format {
 		return fmt.Errorf("deepseek: unsupported model format %q (only %s)", c.Format, Float32Format)
+	}
+	if c.Engram != nil {
+		if err := c.Engram.Validate(); err != nil {
+			return err
+		}
+		if len(c.Engram.TokenMap) != c.VocabSize || c.Engram.Layers[len(c.Engram.Layers)-1] >= c.Layers {
+			return fmt.Errorf("deepseek: Engram does not match model vocabulary/layers")
+		}
 	}
 	for name, n := range map[string]int{"vocabulary": c.VocabSize, "dimension": c.Dim, "intermediate": c.InterDim, "layers": c.Layers, "heads": c.Heads, "experts": c.Experts, "query rank": c.QRank, "head dimension": c.HeadDim, "rotary dimension": c.RopeDim, "groups": c.Groups, "output rank": c.ORank, "window": c.Window, "context": c.MaxSeq, "index heads": c.IndexHeads, "index dimension": c.IndexDim, "index top-k": c.IndexTopK} {
 		if n < 1 || n > 1<<20 {
@@ -122,6 +132,10 @@ func (c Config) Validate() error {
 }
 
 func (c Config) clone() Config {
+	if c.Engram != nil {
+		e := c.Engram.clone()
+		c.Engram = &e
+	}
 	c.Ratios = slices.Clone(c.Ratios)
 	c.KVSources = slices.Clone(c.KVSources)
 	c.IndexSources = slices.Clone(c.IndexSources)
@@ -139,6 +153,14 @@ func (c Config) ParameterShapes() (map[string][]int, error) {
 	for i := 0; i < c.Layers; i++ {
 		prefix := fmt.Sprintf("layers.%d.", i)
 		add := func(name string, shape ...int) { p[prefix+name] = shape }
+		if c.Engram != nil {
+			if index := slices.Index(c.Engram.Layers, i); index >= 0 {
+				add("engram.embed.weight", c.Engram.Rows[index], c.Engram.HeadDim)
+				add("engram.wkv.weight", (hc+1)*c.Dim, c.Engram.columns()*c.Engram.HeadDim)
+				add("engram.q_weight", hc, c.Dim)
+				add("engram.k_weight", hc, c.Dim)
+			}
+		}
 		for _, part := range []string{"attn", "ffn"} {
 			add("hc_"+part+"_fn", mix, hc*c.Dim)
 			add("hc_"+part+"_base", mix)

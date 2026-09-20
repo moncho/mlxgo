@@ -29,8 +29,11 @@ type modelFixture struct {
 }
 
 func readModelFixture(t *testing.T) modelFixture {
+	return readModelFixturePath(t, "testdata/model.json")
+}
+func readModelFixturePath(t *testing.T, path string) modelFixture {
 	t.Helper()
-	data, err := os.ReadFile("testdata/model.json")
+	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +44,12 @@ func readModelFixture(t *testing.T) modelFixture {
 	return f
 }
 func TestModelFixtureContract(t *testing.T) {
-	f := readModelFixture(t)
+	for _, path := range []string{"testdata/model.json", "testdata/model_engram.json"} {
+		t.Run(path, func(t *testing.T) { checkModelFixtureContract(t, readModelFixturePath(t, path)) })
+	}
+}
+func checkModelFixtureContract(t *testing.T, f modelFixture) {
+	t.Helper()
 	if f.Revision != ReferenceRevision || len(f.Cases) != 14 || len(f.Adjustments) != 1 || f.UnpatchedError < .001 {
 		t.Fatal("missing reference provenance or regression evidence")
 	}

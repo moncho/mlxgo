@@ -101,6 +101,7 @@ type Session struct {
 	layers          []layerCache
 	offset          int
 	invalid, closed bool
+	engram          *EngramHasher
 }
 
 var _ lm.Session = (*Session)(nil)
@@ -111,6 +112,10 @@ func (m *Model) NewSession() (session *Session, err error) {
 			return fmt.Errorf("deepseek: closed model")
 		}
 		session = &Session{model: m, layers: make([]layerCache, m.config.Layers)}
+		if m.config.Engram != nil {
+			// Model config is already validated and immutable; share metadata, not history.
+			session.engram = &EngramHasher{config: *m.config.Engram}
+		}
 		return nil
 	})
 	return session, err
@@ -130,6 +135,9 @@ func (s *Session) Close() error {
 			return nil
 		}
 		s.closed = true
+		if s.engram != nil {
+			s.engram.Reset()
+		}
 		var arrays []mlx.Array
 		for i := range s.layers {
 			arrays = append(arrays, s.layers[i].arrays()...)
@@ -175,6 +183,13 @@ func (session *Session) ForwardAll(tokens []int32) (out mlx.Array, err error) {
 			}
 		}
 		var e error
+		var hashes []int32
+		if session.engram != nil {
+			hashes, e = session.engram.Hash(tokens, nil)
+			if e != nil {
+				return e
+			}
+		}
 		out, e = one(func(s *scope) mlx.Array {
 			w := session.model.weights
 			n := len(tokens)
@@ -190,6 +205,20 @@ func (session *Session) ForwardAll(tokens []int32) (out mlx.Array, err error) {
 			pre := s.add(mlx.NewFloat32(mix, []int{1, n, hc}))
 			shared := &attentionState{}
 			for i := 0; i < c.Layers; i++ {
+				if c.Engram != nil {
+					if index := slices.Index(c.Engram.Layers, i); index >= 0 {
+						cols, layers := c.Engram.columns(), len(c.Engram.Layers)
+						ids := make([]int32, n*cols)
+						for token := 0; token < n; token++ {
+							copy(ids[token*cols:], hashes[(token*layers+index)*cols:(token*layers+index+1)*cols])
+						}
+						p := fmt.Sprintf("layers.%d.engram.", i)
+						x = s.add(Engram(x, ids, nil, EngramWeights{w[p+"embed.weight"], w[p+"wkv.weight"], w[p+"q_weight"], w[p+"k_weight"]}, c.Hyper.NormEpsilon))
+						if s.err != nil {
+							return mlx.Array{}
+						}
+					}
+				}
 				x, pre = session.block(s, x, pre, i, shared)
 				if s.err != nil {
 					return mlx.Array{}

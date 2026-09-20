@@ -8,6 +8,8 @@ The [DeepSeek experimental package](deepseek/README.md) runs a reduced float32
 text backbone with sparse attention, MoE, residual mixing and per-session caches.
 It shares an inference interface and greedy decoder (`lm`) with Qwen. It does
 **not** yet load or run released DeepSeek-V4.1-Flash checkpoints.
+The reduced model also supports float32 Engram with prepared token-history
+hashes; its reference tests cover lookup/gating gradients and incremental state.
 
 MLX itself does not expose an official Go API. The supported native path is:
 
