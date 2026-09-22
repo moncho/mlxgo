@@ -76,6 +76,9 @@ func Inspect(dir string) (*Manifest, error) {
 		m.paths[file] = path
 		m.stats[file] = info
 		for name, t := range tensors {
+			if strings.HasPrefix(t.DType, "F8_") {
+				return nil, fmt.Errorf("%w %q for %s", ErrUnsupportedDType, t.DType, name)
+			}
 			if _, ok := m.tensors[name]; ok {
 				return nil, fmt.Errorf("checkpoint: tensor %q occurs in multiple shards", name)
 			}
@@ -116,23 +119,35 @@ func readHeader(path string) (map[string]Tensor, os.FileInfo, error) {
 	if !info.Mode().IsRegular() || info.Size() < 8 {
 		return nil, nil, fmt.Errorf("truncated or nonregular safetensors file")
 	}
-	var size uint64
-	if err = binary.Read(f, binary.LittleEndian, &size); err != nil {
-		return nil, nil, err
+	tensors, err := ReadMetadata(f, info.Size())
+	return tensors, info, err
+}
+
+// ReadMetadata reads only the safetensors length prefix and JSON header from r.
+// fileSize is the full file size, including payload; offsets are checked against
+// it without reading payload bytes. Unlike Inspect, metadata inspection accepts
+// F8_E4M3 and F8_E8M0 storage. This does not add native FP8 decoding support.
+func ReadMetadata(r io.Reader, fileSize int64) (map[string]Tensor, error) {
+	if fileSize < 8 {
+		return nil, fmt.Errorf("truncated safetensors file")
 	}
-	if size < 2 || size > maxJSONBytes || size > uint64(info.Size()-8) {
-		return nil, nil, fmt.Errorf("invalid/oversize safetensors header length %d", size)
+	var size uint64
+	if err := binary.Read(r, binary.LittleEndian, &size); err != nil {
+		return nil, err
+	}
+	if size < 2 || size > maxJSONBytes || size > uint64(fileSize-8) {
+		return nil, fmt.Errorf("invalid/oversize safetensors header length %d", size)
 	}
 	b := make([]byte, int(size))
-	if _, err = io.ReadFull(f, b); err != nil {
-		return nil, nil, err
+	if _, err := io.ReadFull(r, b); err != nil {
+		return nil, err
 	}
 	if b[0] != '{' {
-		return nil, nil, fmt.Errorf("safetensors header must start with an object")
+		return nil, fmt.Errorf("safetensors header must start with an object")
 	}
 	root, err := object(b)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	tensors := make(map[string]Tensor, len(root))
 	var spans [][2]int64
@@ -143,35 +158,35 @@ func readHeader(path string) (map[string]Tensor, os.FileInfo, error) {
 		}
 		fields, err := object(raw)
 		if err != nil {
-			return nil, nil, fmt.Errorf("%s: %w", name, err)
+			return nil, fmt.Errorf("%s: %w", name, err)
 		}
 		if name == "__metadata__" {
 			for _, v := range fields {
 				var s string
 				if bytes.Equal(bytes.TrimSpace(v), []byte("null")) || json.Unmarshal(v, &s) != nil {
-					return nil, nil, fmt.Errorf("metadata values must be strings")
+					return nil, fmt.Errorf("metadata values must be strings")
 				}
 			}
 			continue
 		}
 		if name == "" || strings.ContainsRune(name, 0) {
-			return nil, nil, fmt.Errorf("invalid tensor name %q", name)
+			return nil, fmt.Errorf("invalid tensor name %q", name)
 		}
 		var t Tensor
 		shape, shapeErr := integerArray(fields["shape"])
 		offsets, offsetErr := integerArray(fields["data_offsets"])
 		if json.Unmarshal(fields["dtype"], &t.DType) != nil || shapeErr != nil || offsetErr != nil || len(offsets) != 2 {
-			return nil, nil, fmt.Errorf("%s: malformed tensor metadata", name)
+			return nil, fmt.Errorf("%s: malformed tensor metadata", name)
 		}
-		width := map[string]int64{"BOOL": 1, "U8": 1, "I8": 1, "U16": 2, "I16": 2, "F16": 2, "BF16": 2, "U32": 4, "I32": 4, "F32": 4, "U64": 8, "I64": 8, "F64": 8}[t.DType]
+		width := map[string]int64{"BOOL": 1, "U8": 1, "I8": 1, "U16": 2, "I16": 2, "F16": 2, "BF16": 2, "U32": 4, "I32": 4, "F32": 4, "U64": 8, "I64": 8, "F64": 8, "F8_E4M3": 1, "F8_E8M0": 1}[t.DType]
 		if width == 0 {
-			return nil, nil, fmt.Errorf("%w %q for %s", ErrUnsupportedDType, t.DType, name)
+			return nil, fmt.Errorf("%w %q for %s", ErrUnsupportedDType, t.DType, name)
 		}
 		elements := int64(1)
 		t.Shape = make([]int, len(shape))
 		for i, d := range shape {
 			if d < 0 || d > math.MaxInt32 {
-				return nil, nil, fmt.Errorf("%s: invalid dimension", name)
+				return nil, fmt.Errorf("%s: invalid dimension", name)
 			}
 			t.Shape[i] = int(d)
 			if d == 0 {
@@ -181,14 +196,14 @@ func readHeader(path string) (map[string]Tensor, os.FileInfo, error) {
 		if elements != 0 {
 			for _, d := range t.Shape {
 				if int64(d) > math.MaxInt64/width/elements {
-					return nil, nil, fmt.Errorf("%s: tensor byte count overflow", name)
+					return nil, fmt.Errorf("%s: tensor byte count overflow", name)
 				}
 				elements *= int64(d)
 			}
 		}
 		t.Bytes = elements * width
-		if offsets[0] < 0 || offsets[1] < offsets[0] || offsets[1] > info.Size()-8-int64(size) || offsets[1]-offsets[0] != t.Bytes {
-			return nil, nil, fmt.Errorf("%s: invalid offsets/byte count", name)
+		if offsets[0] < 0 || offsets[1] < offsets[0] || offsets[1] > fileSize-8-int64(size) || offsets[1]-offsets[0] != t.Bytes {
+			return nil, fmt.Errorf("%s: invalid offsets/byte count", name)
 		}
 		spans = append(spans, [2]int64{offsets[0], offsets[1]})
 		tensors[name] = t
@@ -202,14 +217,14 @@ func readHeader(path string) (map[string]Tensor, os.FileInfo, error) {
 	var end int64
 	for _, span := range spans {
 		if span[0] != end {
-			return nil, nil, fmt.Errorf("overlapping tensors or gaps in data")
+			return nil, fmt.Errorf("overlapping tensors or gaps in data")
 		}
 		end = span[1]
 	}
-	if end != info.Size()-8-int64(size) {
-		return nil, nil, fmt.Errorf("unindexed trailing tensor data")
+	if end != fileSize-8-int64(size) {
+		return nil, fmt.Errorf("unindexed trailing tensor data")
 	}
-	return tensors, info, nil
+	return tensors, nil
 }
 
 func integerArray(raw json.RawMessage) ([]int64, error) {

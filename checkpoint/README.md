@@ -29,6 +29,10 @@ defer weight.Close()
   returns the single-file path even if that file is absent.
 - `Hash(dir)` binds adapters and training state to a checkpoint. `FileHash(path)`
   hashes one file's exact bytes.
+- `ReadMetadata(reader, fileSize)` validates a length prefix and header without
+  reading payloads. It also describes F8_E4M3/F8_E8M0 storage for auditing;
+  `Inspect` and `Open` still reject those formats. `ParseIndex(bytes)` validates
+  an index independently of the filesystem. Neither API downloads anything.
 
 The index follows Hugging Face's [sharded checkpoint format](https://huggingface.co/docs/transformers/main/big_models):
 `weight_map` maps tensor names to shard filenames, with optional

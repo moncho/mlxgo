@@ -7,6 +7,15 @@ released model.** All parameters must currently be float32. Engram is supported
 with prepared hash metadata and unquantized tables. Vision, DSpark, production
 quantization and pretrained tokenizer integration remain unsupported.
 
+The [released-checkpoint audit](CHECKPOINT_AUDIT.md) now maps the pinned release's
+entire text-weight and scale inventory using headers only. It identifies the
+required FP8/packed-FP4 conversions without implementing them or loading weights.
+Reproduce the report offline:
+
+```sh
+go run ./cmd/audit-deepseek -snapshot deepseek/testdata/released-checkpoint.metadata.json.gz
+```
+
 The implementation and tests are pinned to the
 [official inference source](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/tree/df42c109f1defefcbfcedbe7d905718a12266e40/inference),
 revision `df42c109f1defefcbfcedbe7d905718a12266e40`. No released weights are
@@ -165,7 +174,7 @@ reference code introduce these requirements beyond memory capacity:
 | Sparse indexer | Float32 scoring, candidate filtering and sharing implemented; quantized scoring and optimized top-k remain |
 | Single-pass mHC | Complete block wiring implemented and compared through model logits |
 | Engram | Float32 remapping/hash/lookup/gating implemented; released tokenizer metadata, FP8 table loading and rounding remain |
-| Checkpoint storage | Generic indexed safetensors loading implemented; released tensor mapping, mixed BF16/FP8/packed FP4 and scaling conventions remain unsupported and are not interchangeable with generic MLX affine quantization |
+| Checkpoint storage | Indexed I/O and header-validated released text tensor/scale mapping implemented; mixed BF16/FP8/packed FP4 decoding and rounding remain unsupported and are not interchangeable with generic MLX affine quantization |
 | Cache quantization | Separate formats for sliding-window KV, compressed KV and index keys; disabling weight quantization alone does not disable these |
 | Text input/output | Official encoding rules and tokenizer integration; no assumption that the existing Qwen chat formatting applies |
 | Vision | DeepSeek-ViT, image processing, projection and vision-specific routing bias |

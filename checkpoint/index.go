@@ -140,48 +140,71 @@ func discover(dir string) (layout, error) {
 	if err != nil {
 		return l, err
 	}
-	root, err := object(b)
+	indexData, err := ParseIndex(b)
 	if err != nil {
-		return l, fmt.Errorf("checkpoint: index: %w", err)
+		return l, err
 	}
-	weights, err := object(root["weight_map"])
-	if err != nil {
-		return l, fmt.Errorf("checkpoint: weight_map: %w", err)
-	}
-	if len(weights) == 0 {
-		return l, fmt.Errorf("checkpoint: empty weight_map")
-	}
-	l.weightMap = make(map[string]string, len(weights))
+	l.weightMap, l.totalSize = indexData.WeightMap, indexData.TotalSize
 	files := map[string]bool{}
-	for name, raw := range weights {
-		var file string
-		if name == "" || name == "__metadata__" || strings.ContainsRune(name, 0) {
-			return l, fmt.Errorf("checkpoint: invalid tensor name %q", name)
-		}
-		if err = json.Unmarshal(raw, &file); err != nil || file == "" || strings.ContainsAny(file, "/\\:\x00") || !strings.HasSuffix(file, ".safetensors") {
-			return l, fmt.Errorf("checkpoint: tensor %q has invalid shard filename", name)
-		}
-		l.weightMap[name] = file
+	for _, file := range l.weightMap {
 		files[file] = true
 	}
 	for file := range files {
 		l.files = append(l.files, file)
 	}
 	sort.Strings(l.files)
+	return l, nil
+}
+
+// Index contains validated tensor routing and optional payload size metadata.
+type Index struct {
+	WeightMap map[string]string
+	TotalSize *int64
+}
+
+// ParseIndex validates index syntax and local shard basenames without reading
+// any files. Header inventory and payload sizes require separate validation.
+func ParseIndex(b []byte) (Index, error) {
+	var out Index
+	if len(b) > maxJSONBytes {
+		return out, fmt.Errorf("checkpoint: index exceeds %d bytes", maxJSONBytes)
+	}
+	root, err := object(b)
+	if err != nil {
+		return out, fmt.Errorf("checkpoint: index: %w", err)
+	}
+	weights, err := object(root["weight_map"])
+	if err != nil {
+		return out, fmt.Errorf("checkpoint: weight_map: %w", err)
+	}
+	if len(weights) == 0 {
+		return out, fmt.Errorf("checkpoint: empty weight_map")
+	}
+	out.WeightMap = make(map[string]string, len(weights))
+	for name, raw := range weights {
+		var file string
+		if name == "" || name == "__metadata__" || strings.ContainsRune(name, 0) {
+			return out, fmt.Errorf("checkpoint: invalid tensor name %q", name)
+		}
+		if err = json.Unmarshal(raw, &file); err != nil || file == "" || strings.ContainsAny(file, "/\\:\x00") || !strings.HasSuffix(file, ".safetensors") {
+			return out, fmt.Errorf("checkpoint: tensor %q has invalid shard filename", name)
+		}
+		out.WeightMap[name] = file
+	}
 	if raw, ok := root["metadata"]; ok {
 		metadata, e := object(raw)
 		if e != nil {
-			return l, fmt.Errorf("checkpoint: index metadata: %w", e)
+			return out, fmt.Errorf("checkpoint: index metadata: %w", e)
 		}
 		if raw, ok = metadata["total_size"]; ok {
 			var n int64
 			if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) || json.Unmarshal(raw, &n) != nil || n < 0 {
-				return l, fmt.Errorf("checkpoint: invalid total_size")
+				return out, fmt.Errorf("checkpoint: invalid total_size")
 			}
-			l.totalSize = &n
+			out.TotalSize = &n
 		}
 	}
-	return l, nil
+	return out, nil
 }
 
 // Shard names are basenames, never arbitrary paths. Symlinks may resolve within
