@@ -6,6 +6,82 @@ not load checkpoints, download weights, quantize activations or implement
 quantized GPU matrix multiplication. The released DeepSeek model is still
 unsupported by `inference.Open`.
 
+## Download Real Validation Samples
+
+From the repository root (no MLX installation or Python required):
+
+```sh
+mkdir -p models
+go run ./cmd/fetch-deepseek-sample -out models/deepseek-v41-sample
+```
+
+This fetches **42,478,080 payload bytes** (42.5 MB), plus a 258,144-byte header,
+from the pinned official DeepSeek-V4.1-Flash revision above. It downloads these
+three layer-0 tensors and their matching `.scale` tensors from shard 3:
+
+- `layers.0.attn.wkv.weight`: FP8 block32, logical shape `[512,5120]`.
+- `layers.0.ffn.experts.0.w1.weight`: FP4 row32, logical shape `[2304,5120]`;
+  on-disk I8 shape `[2304,2560]` packs two FP4 values per byte.
+- `layers.0.attn.wo_a.weight`: FP8 block32, logical shape `[8192,4096]`, with
+  BF16 rounding in the reference conversion.
+
+The output contains six raw `.bin` files and `manifest.json`, not a safetensors
+checkpoint. The manifest records storage shapes, absolute source byte offsets
+(end-exclusive), lengths, revision, ETag and SHA-256 hashes of the received files.
+Those payload hashes support later local integrity checks; they are not upstream
+published checksums or proof of numerical correctness.
+
+The downloader checks the header against our audited SHA-256, checks exact HTTP
+206 ranges and a stable shard size/ETag, and limits payload requests to 4 MiB.
+A server ignoring Range is rejected before its body is read. Existing output
+directories are refused; failed downloads are cleaned up, not resumed. Rerun
+after a failure. The output's parent directory must already exist.
+
+These are real pretrained parameter samples for decoder validation, **not a
+model that can generate text**. No full shard or Engram table is downloaded.
+
+## Validate the Downloaded Samples
+
+Use a Python 3.12 environment with `torch==2.14.0`, separate from application
+dependencies. From the repository root:
+
+```sh
+python3.12 -m venv /tmp/mlxgo-sample-reference-venv
+/tmp/mlxgo-sample-reference-venv/bin/pip install torch==2.14.0
+/tmp/mlxgo-sample-reference-venv/bin/python deepseek/quant/make_sample_reference.py \
+  --samples models/deepseek-v41-sample
+
+export MLXGO_DEEPSEEK_SAMPLE_DIR="$PWD/models/deepseek-v41-sample"
+go test ./deepseek/quant -run TestReleasedSample -v -count=1
+go test -tags "mlx mlxruntime" ./deepseek/quant -run TestReleasedSample -v -count=1
+```
+
+The Python step runs offline once PyTorch is installed. It checks all six input
+hashes and their layouts against the pinned audit header, then produces a local
+`reference.json` using PyTorch CPU casts, the unmodified official FP4 converter,
+and the official `wo_a` conversion block. It refuses to overwrite output; use
+`--out /path/to/new-reference.json` to reproduce the reference separately.
+
+The Go host test decodes every weight in 32-row chunks and compares SHA-256
+hashes of the resulting float32 bytes. Signed zero is canonicalized because the
+official FP4 table discards negative zero; all nonzero values must match exactly.
+`wo_a` is checked both before and after BF16 rounding.
+
+The native test separately decodes whole matrices on the MLX worker, checks
+upload/readback (including BF16 storage for `wo_a`), and runs two dense and one
+sparse input through every matrix on both CPU and GPU. `wo_a` preserves all
+eight independent groups. Float32 projections are compared with PyTorch float64
+accumulation using `abs_error <= 1e-5 + 2e-6 * sum(abs(x_i*w_i))` to account for
+different accumulation orders without making cancellation-heavy outputs flaky.
+These are decoded-weight float32 operations, not quantized GEMM or activation
+quantization tests.
+
+These tests skip unless `MLXGO_DEEPSEEK_SAMPLE_DIR` is set. Once opted in,
+missing/corrupt files are failures, not skips. Ordinary CI remains offline and
+does not fetch released weights or install PyTorch. Weights and generated
+reference data stay under the ignored `models/` directory. See
+[the recorded validation results](REAL_WEIGHT_VALIDATION.md).
+
 ## API
 
 ```go

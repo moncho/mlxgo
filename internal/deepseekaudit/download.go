@@ -1,5 +1,6 @@
-// Package deepseekaudit audits metadata for one pinned DeepSeek release. It
-// neither loads weights nor advertises compatibility with the native runtime.
+// Package deepseekaudit audits metadata for one pinned DeepSeek release and
+// optionally downloads bounded raw validation samples. It does not load models
+// or advertise compatibility with the native runtime.
 package deepseekaudit
 
 import (
