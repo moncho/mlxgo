@@ -9,7 +9,9 @@ quantization and pretrained tokenizer integration remain unsupported.
 
 The [released-checkpoint audit](CHECKPOINT_AUDIT.md) now maps the pinned release's
 entire text-weight and scale inventory using headers only. It identifies the
-required FP8/packed-FP4 conversions without implementing them or loading weights.
+required FP8/packed-FP4 conversions without loading weights. Those storage
+layouts now have [bounded CPU reference decoders](quant/README.md), numerically
+validated on small fixtures but not integrated with released checkpoint loading.
 Reproduce the report offline:
 
 ```sh
@@ -174,7 +176,7 @@ reference code introduce these requirements beyond memory capacity:
 | Sparse indexer | Float32 scoring, candidate filtering and sharing implemented; quantized scoring and optimized top-k remain |
 | Single-pass mHC | Complete block wiring implemented and compared through model logits |
 | Engram | Float32 remapping/hash/lookup/gating implemented; released tokenizer metadata, FP8 table loading and rounding remain |
-| Checkpoint storage | Indexed I/O and header-validated released text tensor/scale mapping implemented; mixed BF16/FP8/packed FP4 decoding and rounding remain unsupported and are not interchangeable with generic MLX affine quantization |
+| Checkpoint storage | Indexed I/O, released text mapping and bounded CPU FP8/FP4 decoding/BF16 rounding tested; released checkpoint integration and efficient quantized execution remain unsupported |
 | Cache quantization | Separate formats for sliding-window KV, compressed KV and index keys; disabling weight quantization alone does not disable these |
 | Text input/output | Official encoding rules and tokenizer integration; no assumption that the existing Qwen chat formatting applies |
 | Vision | DeepSeek-ViT, image processing, projection and vision-specific routing bias |

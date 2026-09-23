@@ -46,7 +46,7 @@ The mapper also follows the pinned conversion script's aliases: remove a leading
 `weight_scale_inv` to `scale`, and `e_score_correction_bias` to `bias`.
 Normalized name collisions fail. Aliases are tested, not inferred from substrings.
 
-| Text weights | Count | Required conversion, not yet implemented |
+| Text weights | Count | Required decoding operation |
 | --- | ---: | --- |
 | F32 | 320 | Preserve values and shape |
 | BF16 | 234 | Cast to the experimental float32 contract |
@@ -54,6 +54,11 @@ Normalized name collisions fail. Aliases are tested, not inferred from substring
 | F8_E4M3 `attn.wo_a` | 40 | Decode blocks, then reproduce the reference converter's BF16 rounding |
 | F8_E4M3 Engram tables | 2 | Decode selected rows with one scale per 32 columns |
 | I8 routed-expert matrices | 46,080 | Treat bytes as packed E2M1, low nibble then high nibble, with one scale per row per 32 logical columns |
+
+As of 2026-09-23 these operations have [bounded CPU reference decoders](quant/README.md)
+with numerical tests on synthetic byte patterns. They are not integrated into
+released checkpoint loading. The saved audit report remains a metadata-only
+observation from 2026-09-22, not evidence of decoded released values.
 
 The scale inventory contains 46,412 F8_E8M0 tensors. For a logical `[out,in]`
 matrix, normal FP8 scales are `[out/32,in/32]`; Engram scales are
@@ -103,5 +108,5 @@ full-shard contents. Payload values, scale values, rounding and model outputs
 have not been compared. Tokenizer/Engram hash preparation, cache quantization,
 efficient expert execution and memory constraints remain separate blockers.
 
-The next bounded milestone is numerical decoder validation for E4M3, E8M0 and
-packed E2M1 on small reference cases, before touching released weight payloads.
+Small-case E4M3, E8M0, packed E2M1 and BF16 numerical validation is now complete.
+Released tensor payload validation and loader integration remain future work.

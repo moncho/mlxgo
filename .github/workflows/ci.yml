@@ -16,6 +16,7 @@ jobs:
       - run: go test ./...
       - run: go vet ./...
       - run: go test -race ./internal/deepseekaudit
+      - run: go test -race ./deepseek/quant
       - run: go run ./cmd/audit-deepseek -snapshot deepseek/testdata/released-checkpoint.metadata.json.gz -out "$RUNNER_TEMP/deepseek-audit.json"
 
   native:
