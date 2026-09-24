@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -31,6 +32,7 @@ type sampleSource struct {
 
 var layer0Source = sampleSource{sampleShard, sampleHeaderSHA256, sampleFileBytes}
 var layer2Source = sampleSource{"model-00005-of-00048.safetensors", "f921056a11b2bee72e36ea301b533dd4d67cc8ae6fcc4c24f642516a2e3c4f31", 7405953784}
+var layer3Source = sampleSource{"model-00006-of-00048.safetensors", "758bbceaef14ca838a4b6dec90cf3946dfa0d7b35e223153587f6354c0fbb0a1", 7389759032}
 
 const compressedAttentionPayloadBytes int64 = 142947072
 
@@ -56,6 +58,14 @@ var attentionNames = []string{
 	"layers.0.attn.wo_b.weight", "layers.0.attn.wo_b.scale",
 	"layers.0.attn.q_norm.weight", "layers.0.attn.kv_norm.weight",
 	"layers.0.attn.attn_sink", "layers.0.attn_norm.weight",
+}
+
+func consumerAttentionNames() []string {
+	names := make([]string, len(attentionNames))
+	for i, name := range attentionNames {
+		names[i] = strings.Replace(name, "layers.0.", "layers.3.", 1)
+	}
+	return names
 }
 
 var expertNames = []string{
@@ -153,6 +163,12 @@ func DownloadAttentionSample(ctx context.Context, out, reuse string, progress fu
 // indexer and input norm. It does not download a complete model checkpoint.
 func DownloadCompressedAttentionSample(ctx context.Context, out string, progress func(string)) error {
 	return layer2Source.download(ctx, out, "", compressedAttentionNames, compressedAttentionPayloadBytes, progress)
+}
+
+// DownloadConsumerAttentionSample fetches layer 3's attention and input norm.
+// This layer consumes layer 2's shared compressed KV and index selection.
+func DownloadConsumerAttentionSample(ctx context.Context, out string, progress func(string)) error {
+	return layer3Source.download(ctx, out, "", consumerAttentionNames(), attentionPayloadBytes, progress)
 }
 
 func downloadSelected(ctx context.Context, out, reuse string, names []string, expectedBytes int64, progress func(string)) error {

@@ -13,10 +13,10 @@ import (
 
 func main() {
 	out := flag.String("out", "", "new output directory (parent must exist)")
-	set := flag.String("set", "projections", "projections (42.5 MB), expert (18.8 MB), attention (126.8 MB), or compressed-attention (142.9 MB)")
+	set := flag.String("set", "projections", "projections (42.5 MB), expert (18.8 MB), attention (126.8 MB), compressed-attention (142.9 MB), or consumer-attention (126.8 MB)")
 	reuse := flag.String("reuse", "", "existing sample directory to reuse verified files from (expert or attention)")
 	flag.Parse()
-	if *out == "" || flag.NArg() != 0 || (*set != "projections" && *set != "expert" && *set != "attention" && *set != "compressed-attention") || ((*set == "projections" || *set == "compressed-attention") && *reuse != "") {
+	if *out == "" || flag.NArg() != 0 || (*set != "projections" && *set != "expert" && *set != "attention" && *set != "compressed-attention" && *set != "consumer-attention") || (*set != "expert" && *set != "attention" && *reuse != "") {
 		flag.Usage()
 		os.Exit(2)
 	}
@@ -24,7 +24,9 @@ func main() {
 	defer stop()
 	progress := func(s string) { fmt.Fprintln(os.Stderr, s) }
 	var err error
-	if *set == "compressed-attention" {
+	if *set == "consumer-attention" {
+		err = deepseekaudit.DownloadConsumerAttentionSample(ctx, *out, progress)
+	} else if *set == "compressed-attention" {
 		err = deepseekaudit.DownloadCompressedAttentionSample(ctx, *out, progress)
 	} else if *set == "attention" {
 		err = deepseekaudit.DownloadAttentionSample(ctx, *out, *reuse, progress)

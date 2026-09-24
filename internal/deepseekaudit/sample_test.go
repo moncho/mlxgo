@@ -357,8 +357,17 @@ func TestCompressedAttentionPlan(t *testing.T) {
 }
 
 func TestDownloadCompressedAttentionSample(t *testing.T) {
-	h := sourceHeader(t, layer2Source.shard)
-	plan, err := layer2Source.plan(h, compressedAttentionNames, compressedAttentionPayloadBytes)
+	testDownloadAttentionSource(t, layer2Source, compressedAttentionNames, compressedAttentionPayloadBytes)
+}
+
+func TestDownloadConsumerAttentionSample(t *testing.T) {
+	testDownloadAttentionSource(t, layer3Source, consumerAttentionNames(), attentionPayloadBytes)
+}
+
+func testDownloadAttentionSource(t *testing.T, source sampleSource, names []string, payloadBytes int64) {
+	t.Helper()
+	h := sourceHeader(t, source.shard)
+	plan, err := source.plan(h, names, payloadBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -388,7 +397,7 @@ func TestDownloadCompressedAttentionSample(t *testing.T) {
 		return &http.Response{StatusCode: 206, Header: header, ContentLength: int64(len(data)), Body: io.NopCloser(bytes.NewReader(data))}, nil
 	})}
 	out := filepath.Join(t.TempDir(), "sample")
-	if err := layer2Source.downloadSelection(context.Background(), client, "https://example.test/shard", out, "", compressedAttentionNames, compressedAttentionPayloadBytes, nil); err != nil {
+	if err := source.downloadSelection(context.Background(), client, "https://example.test/shard", out, "", names, payloadBytes, nil); err != nil {
 		t.Fatal(err)
 	}
 	b, err := os.ReadFile(filepath.Join(out, "manifest.json"))
@@ -399,7 +408,7 @@ func TestDownloadCompressedAttentionSample(t *testing.T) {
 	if err := json.Unmarshal(b, &m); err != nil {
 		t.Fatal(err)
 	}
-	if fetched != compressedAttentionPayloadBytes || m.PayloadBytes != fetched || m.Shard != layer2Source.shard || m.HeaderSHA256 != layer2Source.headerSHA || m.ETag != h.ETag || m.Revision != Revision || m.Repository != Repository || len(m.Tensors) != len(plan) {
+	if fetched != payloadBytes || m.PayloadBytes != fetched || m.Shard != source.shard || m.HeaderSHA256 != source.headerSHA || m.ETag != h.ETag || m.Revision != Revision || m.Repository != Repository || len(m.Tensors) != len(plan) {
 		t.Fatal("incorrect provenance or byte count", m, fetched)
 	}
 	for _, p := range m.Tensors {
@@ -410,5 +419,35 @@ func TestDownloadCompressedAttentionSample(t *testing.T) {
 	}
 	if _, err := layer0Source.readReuseManifest(out, h); err == nil {
 		t.Fatal("accepted cross-shard reuse")
+	}
+}
+
+func TestConsumerAttentionPlan(t *testing.T) {
+	h := sourceHeader(t, layer3Source.shard)
+	plan, err := layer3Source.plan(h, consumerAttentionNames(), attentionPayloadBytes)
+	if err != nil || len(plan) != 14 {
+		t.Fatal(plan, err)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(h.Prefix[8:], &raw); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range plan {
+		if p.Offsets[0] < int64(len(h.Prefix)) || p.Offsets[1] > h.Size || p.Bytes != p.Offsets[1]-p.Offsets[0] {
+			t.Fatal(p)
+		}
+		delete(raw, p.Name)
+	}
+	for name := range raw {
+		if strings.HasPrefix(name, "layers.3.attn.") || name == "layers.3.attn_norm.weight" {
+			t.Fatal("missing", name)
+		}
+	}
+	if _, err := layer3Source.plan(sourceHeader(t, layer0Source.shard), consumerAttentionNames(), attentionPayloadBytes); err == nil {
+		t.Fatal("accepted wrong shard with same file size")
+	}
+	h.Prefix[10] ^= 1
+	if _, err := layer3Source.plan(h, consumerAttentionNames(), attentionPayloadBytes); err == nil {
+		t.Fatal("accepted changed header")
 	}
 }

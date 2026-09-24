@@ -22,6 +22,9 @@ The [real layer-2 compressed-attention validation](COMPRESSED_ATTENTION_VALIDATI
 adds learned compression, index keys, partial groups, YaRN and exact top-512
 selection from 640 keys on CPU and GPU. These remain float32 component checks,
 not support for loading or generating with the complete released checkpoint.
+The [real layer-2/3 sharing validation](SHARED_ATTENTION_VALIDATION.md) checks
+the producer/consumer pair in one lazy graph, including interleaved and
+concurrent sessions. No residual, mHC or FFN block wiring is implied by this pair.
 Reproduce the report offline:
 
 ```sh

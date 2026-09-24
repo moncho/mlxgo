@@ -58,6 +58,11 @@ It does not accept `-reuse`: layer-0 weights are not interchangeable with layer 
 All sample selections are capped at 144 MiB including headers, using requests
 of at most 4 MiB. See [compressed attention validation](../COMPRESSED_ATTENTION_VALIDATION.md).
 
+`-set consumer-attention` fetches layer 3's attention and input norm from pinned
+shard 6 (126,753,280 bytes, 14 tensors). Combined with the existing layer-2
+samples, it supports [cross-layer sharing validation](../SHARED_ATTENTION_VALIDATION.md).
+It also rejects `-reuse`; each layer's weights are distinct.
+
 ## Validate the Downloaded Samples
 
 Use a Python 3.12 environment with `torch==2.14.0`, separate from application

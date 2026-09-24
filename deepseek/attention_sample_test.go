@@ -41,13 +41,15 @@ type attentionIndexReference struct {
 }
 
 type attentionReference struct {
-	Schema      int    `json:"schema"`
-	Revision    string `json:"revision"`
-	ModelSHA    string `json:"model_sha256"`
-	ConfigSHA   string `json:"config_sha256"`
-	Torch       string `json:"torch_version"`
-	ManifestSHA string `json:"manifest_sha256"`
-	Config      struct {
+	Schema           int    `json:"schema"`
+	Revision         string `json:"revision"`
+	ModelSHA         string `json:"model_sha256"`
+	ConfigSHA        string `json:"config_sha256"`
+	Torch            string `json:"torch_version"`
+	ManifestSHA      string `json:"manifest_sha256"`
+	OwnerManifestSHA string `json:"owner_manifest_sha256"`
+	Wiring           string `json:"wiring"`
+	Config           struct {
 		Config
 		NormEpsilon float32 `json:"norm_eps"`
 	} `json:"config"`
@@ -69,6 +71,8 @@ func readAttentionLayerReference(t *testing.T, layer int) (string, attentionRefe
 	env := "MLXGO_DEEPSEEK_ATTENTION_DIR"
 	if layer == 2 {
 		env = "MLXGO_DEEPSEEK_COMPRESSED_ATTENTION_DIR"
+	} else if layer == 3 {
+		env = "MLXGO_DEEPSEEK_SHARED_ATTENTION_DIR"
 	}
 	dir := os.Getenv(env)
 	if dir == "" {
@@ -115,7 +119,11 @@ func readAttentionLayerReference(t *testing.T, layer int) (string, attentionRefe
 			t.Fatal("unexpected sliding-window config")
 		}
 	} else {
-		if c.Layers != 3 || c.MaxSeq != 1281 || !slices.Equal(c.Ratios, []int{0, 0, 2}) || !slices.Equal(c.KVSources, []int{2}) || !slices.Equal(c.IndexSources, []int{2}) || c.CompressTheta != 160000 || c.OriginalSeq != 65536 || c.RopeFactor != 16 || c.BetaFast != 32 || c.BetaSlow != 1 || c.IndexHeads != 32 || c.IndexDim != 128 || c.IndexTopK != 512 || c.CandidateSource != 20 || c.CandidateBlocks != 2048 || c.CandidateSize != 8 {
+		ratios := []int{0, 0, 2}
+		if layer == 3 {
+			ratios = append(ratios, 2)
+		}
+		if c.Layers != layer+1 || c.MaxSeq != 1281 || !slices.Equal(c.Ratios, ratios) || !slices.Equal(c.KVSources, []int{2}) || !slices.Equal(c.IndexSources, []int{2}) || c.CompressTheta != 160000 || c.OriginalSeq != 65536 || c.RopeFactor != 16 || c.BetaFast != 32 || c.BetaSlow != 1 || c.IndexHeads != 32 || c.IndexDim != 128 || c.IndexTopK != 512 || c.CandidateSource != 20 || c.CandidateBlocks != 2048 || c.CandidateSize != 8 {
 			t.Fatal("unexpected compressed attention config")
 		}
 	}
@@ -126,12 +134,18 @@ func readAttentionLayerReference(t *testing.T, layer int) (string, attentionRefe
 		"layers.0.attn.wo_b.weight": {5120, 8192}, "layers.0.attn.q_norm.weight": {1280},
 		"layers.0.attn.kv_norm.weight": {512}, "layers.0.attn.attn_sink": {64}, "layers.0.attn_norm.weight": {5120},
 	}
-	if layer == 2 {
+	if layer != 0 {
 		remapped := make(map[string][]int)
+		prefix := "layers.2."
+		if layer == 3 {
+			prefix = "layers.3."
+		}
 		for name, shape := range want {
-			remapped[strings.Replace(name, "layers.0.", "layers.2.", 1)] = shape
+			remapped[strings.Replace(name, "layers.0.", prefix, 1)] = shape
 		}
 		want = remapped
+	}
+	if layer == 2 {
 		for name, shape := range map[string][]int{
 			"compressor.norm.weight": {512}, "compressor.wkv.weight": {512, 5120}, "compressor.wgate.weight": {512, 5120},
 			"indexer.k_norm.weight": {128}, "indexer.wk.weight": {128, 512}, "indexer.weights_proj.weight": {32, 5120}, "indexer.wq_b.weight": {4096, 1280},
@@ -162,7 +176,7 @@ func readAttentionLayerReference(t *testing.T, layer int) (string, attentionRefe
 		delete(want, tensor.Name)
 	}
 	prefills := []int{1, 127, 128, 129}
-	if layer == 2 {
+	if layer != 0 {
 		prefills = []int{1, 2, 127, 128, 129}
 	}
 	if len(r.Full) != 131*5120 || len(r.Cases) != len(prefills) {
@@ -209,6 +223,19 @@ func readAttentionLayerReference(t *testing.T, layer int) (string, attentionRefe
 		}
 	}
 	return dir, r
+}
+
+func readSharedAttentionReferences(t *testing.T) (string, attentionReference, string, attentionReference) {
+	t.Helper()
+	dir, consumer := readAttentionLayerReference(t, 3)
+	if os.Getenv("MLXGO_DEEPSEEK_COMPRESSED_ATTENTION_DIR") == "" {
+		t.Fatal("shared attention requires MLXGO_DEEPSEEK_COMPRESSED_ATTENTION_DIR")
+	}
+	ownerDir, owner := readAttentionLayerReference(t, 2)
+	if consumer.OwnerManifestSHA != owner.ManifestSHA || consumer.Wiring != "norm3(attention2(norm2(x)))" {
+		t.Fatal("shared attention owner provenance/wiring mismatch")
+	}
+	return ownerDir, owner, dir, consumer
 }
 
 func loadAttentionTensor(t *testing.T, dir string, m attentionTensorReference) []float32 {
@@ -295,6 +322,13 @@ func TestReleasedAttentionWeights(t *testing.T) {
 
 func TestReleasedCompressedAttentionWeights(t *testing.T) {
 	dir, ref := readAttentionLayerReference(t, 2)
+	for _, m := range ref.Tensors {
+		t.Run(m.Name, func(t *testing.T) { t.Logf("%d values match reference", len(loadAttentionTensor(t, dir, m))) })
+	}
+}
+
+func TestReleasedSharedAttentionWeights(t *testing.T) {
+	_, _, dir, ref := readSharedAttentionReferences(t)
 	for _, m := range ref.Tensors {
 		t.Run(m.Name, func(t *testing.T) { t.Logf("%d values match reference", len(loadAttentionTensor(t, dir, m))) })
 	}

@@ -116,3 +116,7 @@ cache consumers, later KV owners, ratio-1 compression, hierarchical candidate
 filtering, mHC/block integration and complete model logits are not covered by
 this layer-2 test. Those paths have smaller synthetic tests, but real-weight
 integration and efficient quantized execution remain separate work.
+
+The layer-2/3 producer/consumer pair is now validated separately in
+[shared attention validation](SHARED_ATTENTION_VALIDATION.md), still without
+activation/cache quantization or full transformer-block wiring.
