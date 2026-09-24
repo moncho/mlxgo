@@ -18,6 +18,10 @@ routing weights. This does not validate the released activation-quantized kernel
 The [real layer-0 attention validation](ATTENTION_VALIDATION.md) covers the full
 sliding-window path, prefill, cached decoding, window rollover and session
 isolation. It also caught and fixed a real-shape CPU grouped-projection failure.
+The [real layer-2 compressed-attention validation](COMPRESSED_ATTENTION_VALIDATION.md)
+adds learned compression, index keys, partial groups, YaRN and exact top-512
+selection from 640 keys on CPU and GPU. These remain float32 component checks,
+not support for loading or generating with the complete released checkpoint.
 Reproduce the report offline:
 
 ```sh

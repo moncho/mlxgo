@@ -109,6 +109,10 @@ sets enabled. Real tests are opt-in; after setting the environment variable,
 missing/corrupt files fail rather than skip. Weights and generated references
 remain under ignored `models/` directories.
 
-This does not validate released compressed-attention layers, their indexers,
+This layer-0 check does not validate released compressed-attention layers, their indexers,
 quantized KV caches, dynamic activation quantization, mHC/block integration,
 full-model logits or text generation. Those remain separate milestones.
+
+Layer 2 is now covered separately by the
+[compressed-attention validation](COMPRESSED_ATTENTION_VALIDATION.md), still
+with float32 arithmetic and activation/cache quantizers disabled.

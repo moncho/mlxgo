@@ -14,6 +14,10 @@ import (
 )
 
 func sampleHeader(t *testing.T) Header {
+	return sourceHeader(t, sampleShard)
+}
+
+func sourceHeader(t *testing.T, shard string) Header {
 	t.Helper()
 	f, err := os.Open("../../deepseek/testdata/released-checkpoint.metadata.json.gz")
 	if err != nil {
@@ -24,7 +28,7 @@ func sampleHeader(t *testing.T) Header {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return s.Headers[sampleShard]
+	return s.Headers[shard]
 }
 
 func TestSamplePlan(t *testing.T) {
@@ -255,7 +259,7 @@ func TestReuseRejectsMetadata(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(dir, "manifest.json"), b, 0600); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := readReuseManifest(dir, h); err == nil {
+			if _, err := layer0Source.readReuseManifest(dir, h); err == nil {
 				t.Fatal("accepted invalid manifest")
 			}
 		})
@@ -304,12 +308,107 @@ func TestExplicitSampleBudget(t *testing.T) {
 	}{
 		{maxDownload, 0, false}, {maxDownload, 128 << 20, true},
 		{(128 << 20) - 1, 128 << 20, true}, {128 << 20, 128 << 20, false},
-		{0, (128 << 20) + 1, false}, {0, -1, false},
+		{maxSampleDownload - 1, maxSampleDownload, true},
+		{maxSampleDownload, maxSampleDownload, false},
+		{0, maxSampleDownload + 1, false}, {0, -1, false},
 	} {
 		f := fetcher{ctx: context.Background(), client: client, bytes: tc.used, budget: tc.budget}
 		_, _, _, err := f.get("https://example.test/shard", 0, 0)
 		if (err == nil) != tc.ok {
 			t.Fatalf("budget case %+v: %v", tc, err)
 		}
+	}
+}
+
+func TestCompressedAttentionPlan(t *testing.T) {
+	h := sourceHeader(t, layer2Source.shard)
+	plan, err := layer2Source.plan(h, compressedAttentionNames, compressedAttentionPayloadBytes)
+	if err != nil || len(plan) != 22 {
+		t.Fatal(plan, err)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(h.Prefix[8:], &raw); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range plan {
+		if p.Offsets[0] < int64(len(h.Prefix)) || p.Offsets[1] > h.Size || p.Bytes != p.Offsets[1]-p.Offsets[0] {
+			t.Fatal(p)
+		}
+		delete(raw, p.Name)
+	}
+	for name := range raw {
+		if strings.HasPrefix(name, "layers.2.attn.") || name == "layers.2.attn_norm.weight" {
+			t.Fatal("missing", name)
+		}
+	}
+	if compressedAttentionPayloadBytes+int64(len(h.Prefix)) > maxSampleDownload {
+		t.Fatal("budget too small")
+	}
+	if _, err := layer0Source.plan(h, compressedAttentionNames, compressedAttentionPayloadBytes); err == nil {
+		t.Fatal("accepted wrong shard")
+	}
+	if _, err := layer2Source.plan(h, compressedAttentionNames, compressedAttentionPayloadBytes-1); err == nil {
+		t.Fatal("accepted wrong size")
+	}
+	h.Prefix[10] ^= 1
+	if _, err := layer2Source.plan(h, compressedAttentionNames, compressedAttentionPayloadBytes); err == nil {
+		t.Fatal("accepted changed header")
+	}
+}
+
+func TestDownloadCompressedAttentionSample(t *testing.T) {
+	h := sourceHeader(t, layer2Source.shard)
+	plan, err := layer2Source.plan(h, compressedAttentionNames, compressedAttentionPayloadBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fetched int64
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		var start, end int64
+		if _, err := fmt.Sscanf(r.Header.Get("Range"), "bytes=%d-%d", &start, &end); err != nil {
+			t.Fatal(err)
+		}
+		payload := start >= int64(len(h.Prefix))
+		allowed := !payload && ((start == 0 && end == 7) || (start == 8 && end == int64(len(h.Prefix))-1))
+		for _, p := range plan {
+			allowed = allowed || (start >= p.Offsets[0] && end < p.Offsets[1])
+		}
+		if !allowed || end-start+1 > sampleChunkBytes {
+			t.Fatalf("unexpected range %d-%d", start, end)
+		}
+		data := make([]byte, end-start+1)
+		if payload {
+			fetched += int64(len(data))
+		} else {
+			copy(data, h.Prefix[start:end+1])
+		}
+		header := http.Header{}
+		header.Set("ETag", h.ETag)
+		header.Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, h.Size))
+		return &http.Response{StatusCode: 206, Header: header, ContentLength: int64(len(data)), Body: io.NopCloser(bytes.NewReader(data))}, nil
+	})}
+	out := filepath.Join(t.TempDir(), "sample")
+	if err := layer2Source.downloadSelection(context.Background(), client, "https://example.test/shard", out, "", compressedAttentionNames, compressedAttentionPayloadBytes, nil); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(out, "manifest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m sampleManifest
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatal(err)
+	}
+	if fetched != compressedAttentionPayloadBytes || m.PayloadBytes != fetched || m.Shard != layer2Source.shard || m.HeaderSHA256 != layer2Source.headerSHA || m.ETag != h.ETag || m.Revision != Revision || m.Repository != Repository || len(m.Tensors) != len(plan) {
+		t.Fatal("incorrect provenance or byte count", m, fetched)
+	}
+	for _, p := range m.Tensors {
+		b, err := os.ReadFile(filepath.Join(out, p.File))
+		if err != nil || int64(len(b)) != p.Bytes || digest(b) != p.SHA256 {
+			t.Fatal(p, err)
+		}
+	}
+	if _, err := layer0Source.readReuseManifest(out, h); err == nil {
+		t.Fatal("accepted cross-shard reuse")
 	}
 }

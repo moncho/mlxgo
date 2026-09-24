@@ -117,7 +117,7 @@ type fetcher struct {
 	ctx    context.Context
 	client *http.Client
 	bytes  int64
-	budget int64 // Zero retains the metadata-only default; samples cap at 128 MiB.
+	budget int64 // Zero retains the metadata-only default; samples cap at 144 MiB.
 }
 
 func (f *fetcher) get(url string, start, end int64) ([]byte, int64, string, error) {
@@ -133,7 +133,7 @@ func (f *fetcher) get(url string, start, end int64) ([]byte, int64, string, erro
 	if budget == 0 {
 		budget = maxDownload
 	}
-	if budget < 0 || budget > 128<<20 || f.bytes+limit > budget {
+	if budget < 0 || budget > maxSampleDownload || f.bytes+limit > budget {
 		return nil, 0, "", fmt.Errorf("audit: metadata download budget exceeded")
 	}
 	req, err := http.NewRequestWithContext(f.ctx, http.MethodGet, url, nil)

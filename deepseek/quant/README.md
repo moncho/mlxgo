@@ -48,9 +48,15 @@ reuse directory. See [complete expert validation](../EXPERT_VALIDATION.md).
 
 `-set attention` fetches all layer-0 attention tensors and the input norm
 (126,753,280 bytes). Reusing the initial samples reduces new payload to
-90,542,080 bytes. This selection has a bounded 128 MiB download allowance,
-including its header; the metadata-only audit retains its 64 MiB default.
+90,542,080 bytes. Each selection's download allowance is its exact payload plus
+header size; the metadata-only audit retains its 64 MiB default.
 See [real attention validation](../ATTENTION_VALIDATION.md).
+
+`-set compressed-attention` fetches the complete layer-2 attention, compressor,
+indexer and input norm from pinned shard 5 (142,947,072 bytes, 22 raw tensors).
+It does not accept `-reuse`: layer-0 weights are not interchangeable with layer 2.
+All sample selections are capped at 144 MiB including headers, using requests
+of at most 4 MiB. See [compressed attention validation](../COMPRESSED_ATTENTION_VALIDATION.md).
 
 ## Validate the Downloaded Samples
 

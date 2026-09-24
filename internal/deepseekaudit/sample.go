@@ -20,8 +20,33 @@ const sampleHeaderSHA256 = "ff66dd94d7eb6ef5cc1457b2ac13b422c14e9891914c786af995
 const sampleFileBytes int64 = 7389759032
 const samplePayloadBytes int64 = 42478080
 const sampleChunkBytes int64 = 4 << 20
+const maxSampleDownload int64 = 144 << 20
 const expertPayloadBytes int64 = 18800640
 const attentionPayloadBytes int64 = 126753280
+
+type sampleSource struct {
+	shard, headerSHA string
+	fileBytes        int64
+}
+
+var layer0Source = sampleSource{sampleShard, sampleHeaderSHA256, sampleFileBytes}
+var layer2Source = sampleSource{"model-00005-of-00048.safetensors", "f921056a11b2bee72e36ea301b533dd4d67cc8ae6fcc4c24f642516a2e3c4f31", 7405953784}
+
+const compressedAttentionPayloadBytes int64 = 142947072
+
+var compressedAttentionNames = []string{
+	"layers.2.attn.wkv.weight", "layers.2.attn.wkv.scale",
+	"layers.2.attn.wo_a.weight", "layers.2.attn.wo_a.scale",
+	"layers.2.attn.wq_a.weight", "layers.2.attn.wq_a.scale",
+	"layers.2.attn.wq_b.weight", "layers.2.attn.wq_b.scale",
+	"layers.2.attn.wo_b.weight", "layers.2.attn.wo_b.scale",
+	"layers.2.attn.q_norm.weight", "layers.2.attn.kv_norm.weight",
+	"layers.2.attn.attn_sink", "layers.2.attn_norm.weight",
+	"layers.2.attn.compressor.norm.weight", "layers.2.attn.compressor.wkv.weight",
+	"layers.2.attn.compressor.wgate.weight", "layers.2.attn.indexer.k_norm.weight",
+	"layers.2.attn.indexer.weights_proj.weight", "layers.2.attn.indexer.wk.weight",
+	"layers.2.attn.indexer.wq_b.weight", "layers.2.attn.indexer.wq_b.scale",
+}
 
 var attentionNames = []string{
 	"layers.0.attn.wkv.weight", "layers.0.attn.wkv.scale",
@@ -70,7 +95,11 @@ func samplePlan(h Header) ([]sampleTensor, error) {
 }
 
 func selectedPlan(h Header, names []string, expectedBytes int64) ([]sampleTensor, error) {
-	if h.Size != sampleFileBytes || digest(h.Prefix) != sampleHeaderSHA256 {
+	return layer0Source.plan(h, names, expectedBytes)
+}
+
+func (source sampleSource) plan(h Header, names []string, expectedBytes int64) ([]sampleTensor, error) {
+	if h.Size != source.fileBytes || digest(h.Prefix) != source.headerSHA {
 		return nil, fmt.Errorf("sample: pinned shard header checksum/size mismatch")
 	}
 	var raw map[string]struct {
@@ -120,15 +149,25 @@ func DownloadAttentionSample(ctx context.Context, out, reuse string, progress fu
 	return downloadSelected(ctx, out, reuse, attentionNames, attentionPayloadBytes, progress)
 }
 
+// DownloadCompressedAttentionSample fetches layer 2's attention, compressor,
+// indexer and input norm. It does not download a complete model checkpoint.
+func DownloadCompressedAttentionSample(ctx context.Context, out string, progress func(string)) error {
+	return layer2Source.download(ctx, out, "", compressedAttentionNames, compressedAttentionPayloadBytes, progress)
+}
+
 func downloadSelected(ctx context.Context, out, reuse string, names []string, expectedBytes int64, progress func(string)) error {
+	return layer0Source.download(ctx, out, reuse, names, expectedBytes, progress)
+}
+
+func (source sampleSource) download(ctx context.Context, out, reuse string, names []string, expectedBytes int64, progress func(string)) error {
 	client := &http.Client{Timeout: 2 * time.Minute, CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 5 || req.URL.Scheme != "https" {
 			return fmt.Errorf("sample: unsafe/excessive redirect")
 		}
 		return nil
 	}}
-	url := "https://huggingface.co/" + Repository + "/resolve/" + Revision + "/" + sampleShard
-	return downloadSelection(ctx, client, url, out, reuse, names, expectedBytes, progress)
+	url := "https://huggingface.co/" + Repository + "/resolve/" + Revision + "/" + source.shard
+	return source.downloadSelection(ctx, client, url, out, reuse, names, expectedBytes, progress)
 }
 
 func downloadSample(ctx context.Context, client *http.Client, url, out string, progress func(string)) error {
@@ -136,6 +175,10 @@ func downloadSample(ctx context.Context, client *http.Client, url, out string, p
 }
 
 func downloadSelection(ctx context.Context, client *http.Client, url, out, reuse string, names []string, expectedBytes int64, progress func(string)) (err error) {
+	return layer0Source.downloadSelection(ctx, client, url, out, reuse, names, expectedBytes, progress)
+}
+
+func (source sampleSource) downloadSelection(ctx context.Context, client *http.Client, url, out, reuse string, names []string, expectedBytes int64, progress func(string)) (err error) {
 	if err = os.Mkdir(out, 0700); err != nil {
 		return err
 	}
@@ -153,19 +196,19 @@ func downloadSelection(ctx context.Context, client *http.Client, url, out, reuse
 	if err != nil {
 		return err
 	}
-	plan, err := selectedPlan(h, names, expectedBytes)
+	plan, err := source.plan(h, names, expectedBytes)
 	if err != nil {
 		return err
 	}
 	f.budget = int64(len(h.Prefix)) + expectedBytes
-	if f.budget > 128<<20 {
+	if f.budget > maxSampleDownload {
 		return fmt.Errorf("sample: selection exceeds download budget")
 	}
-	m := sampleManifest{Repository: Repository, Revision: Revision, Shard: sampleShard,
-		ETag: h.ETag, HeaderSHA256: sampleHeaderSHA256, PayloadBytes: expectedBytes, Tensors: plan}
+	m := sampleManifest{Repository: Repository, Revision: Revision, Shard: source.shard,
+		ETag: h.ETag, HeaderSHA256: source.headerSHA, PayloadBytes: expectedBytes, Tensors: plan}
 	var previous sampleManifest
 	if reuse != "" {
-		previous, err = readReuseManifest(reuse, h)
+		previous, err = source.readReuseManifest(reuse, h)
 		if err != nil {
 			return err
 		}
@@ -209,7 +252,7 @@ func downloadSelection(ctx context.Context, client *http.Client, url, out, reuse
 	return errors.Join(enc.Encode(m), file.Close())
 }
 
-func readReuseManifest(dir string, h Header) (sampleManifest, error) {
+func (source sampleSource) readReuseManifest(dir string, h Header) (sampleManifest, error) {
 	var m sampleManifest
 	f, err := os.Open(filepath.Join(dir, "manifest.json"))
 	if err != nil {
@@ -223,7 +266,7 @@ func readReuseManifest(dir string, h Header) (sampleManifest, error) {
 	if err := json.Unmarshal(b, &m); err != nil {
 		return m, err
 	}
-	if m.Repository != Repository || m.Revision != Revision || m.Shard != sampleShard || m.HeaderSHA256 != sampleHeaderSHA256 || m.ETag != h.ETag {
+	if m.Repository != Repository || m.Revision != Revision || m.Shard != source.shard || m.HeaderSHA256 != source.headerSHA || m.ETag != h.ETag {
 		return m, fmt.Errorf("sample: reuse provenance mismatch")
 	}
 	seen := map[string]bool{}
