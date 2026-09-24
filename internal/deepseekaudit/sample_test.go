@@ -147,3 +147,169 @@ func TestDownloadSample(t *testing.T) {
 		})
 	}
 }
+
+func TestExpertPlanAndReuse(t *testing.T) {
+	h := sampleHeader(t)
+	plan, err := selectedPlan(h, expertNames, expertPayloadBytes)
+	if err != nil || len(plan) != 6 {
+		t.Fatal(plan, err)
+	}
+	var total int64
+	for _, p := range plan {
+		total += p.Bytes
+	}
+	if total != 18800640 || plan[2].Shape[0] != 5120 || plan[2].Shape[1] != 1152 {
+		t.Fatal(plan)
+	}
+	dir := t.TempDir()
+	m := sampleManifest{Repository: Repository, Revision: Revision, Shard: sampleShard, ETag: h.ETag, HeaderSHA256: sampleHeaderSHA256, Tensors: append([]sampleTensor(nil), plan[:2]...)}
+	for i := range m.Tensors {
+		p := &m.Tensors[i]
+		b := make([]byte, p.Bytes)
+		p.SHA256 = digest(b)
+		if err := os.WriteFile(filepath.Join(dir, p.File), b, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "manifest.json"), b, 0600); err != nil {
+		t.Fatal(err)
+	}
+	var fetched int64
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		var start, end int64
+		if _, err := fmt.Sscanf(r.Header.Get("Range"), "bytes=%d-%d", &start, &end); err != nil {
+			t.Fatal(err)
+		}
+		data := make([]byte, end-start+1)
+		if start < int64(len(h.Prefix)) {
+			copy(data, h.Prefix[start:end+1])
+		} else {
+			allowed := false
+			for _, p := range plan[2:] {
+				allowed = allowed || (start >= p.Offsets[0] && end < p.Offsets[1])
+			}
+			if !allowed {
+				t.Fatal("downloaded a reused or unselected range")
+			}
+			fetched += int64(len(data))
+		}
+		header := http.Header{}
+		header.Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, h.Size))
+		header.Set("ETag", h.ETag)
+		return &http.Response{StatusCode: 206, Header: header, ContentLength: int64(len(data)), Body: io.NopCloser(bytes.NewReader(data))}, nil
+	})}
+	out := filepath.Join(t.TempDir(), "expert")
+	if err := downloadSelection(context.Background(), client, "https://example.test/shard", out, dir, expertNames, expertPayloadBytes, nil); err != nil {
+		t.Fatal(err)
+	}
+	if fetched != 12533760 {
+		t.Fatal("wrong incremental payload", fetched)
+	}
+	for _, p := range plan {
+		b, err := os.ReadFile(filepath.Join(out, p.File))
+		if err != nil || int64(len(b)) != p.Bytes {
+			t.Fatal(p.Name, err)
+		}
+	}
+	// A corrupt cached tensor is an error, not silently replaced or trusted.
+	if err := os.WriteFile(filepath.Join(dir, plan[0].File), []byte{1}, 0600); err != nil {
+		t.Fatal(err)
+	}
+	badOut := filepath.Join(t.TempDir(), "failed")
+	if err := downloadSelection(context.Background(), client, "https://example.test/shard", badOut, dir, expertNames, expertPayloadBytes, nil); err == nil {
+		t.Fatal("accepted corrupt reuse")
+	}
+	if _, err := os.Stat(badOut); !os.IsNotExist(err) {
+		t.Fatal("partial output left behind", err)
+	}
+	if b, err := os.ReadFile(filepath.Join(dir, plan[0].File)); err != nil || !bytes.Equal(b, []byte{1}) {
+		t.Fatal("source modified")
+	}
+}
+
+func TestReuseRejectsMetadata(t *testing.T) {
+	h := sampleHeader(t)
+	for _, kind := range []string{"revision", "etag", "duplicate", "oversize"} {
+		t.Run(kind, func(t *testing.T) {
+			m := sampleManifest{Repository: Repository, Revision: Revision, Shard: sampleShard, ETag: h.ETag, HeaderSHA256: sampleHeaderSHA256}
+			switch kind {
+			case "revision":
+				m.Revision = "different"
+			case "etag":
+				m.ETag = `"changed"`
+			case "duplicate":
+				m.Tensors = []sampleTensor{{Name: "a"}, {Name: "a"}}
+			}
+			b, err := json.Marshal(m)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if kind == "oversize" {
+				b = make([]byte, (64<<10)+1)
+			}
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "manifest.json"), b, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := readReuseManifest(dir, h); err == nil {
+				t.Fatal("accepted invalid manifest")
+			}
+		})
+	}
+	_, err := copyReusedSample(io.Discard, t.TempDir(), sampleManifest{Tensors: []sampleTensor{{Name: "w", File: "../outside"}}}, sampleTensor{Name: "w", File: "w.bin"})
+	if err == nil {
+		t.Fatal("accepted path mismatch")
+	}
+}
+
+func TestAttentionSelection(t *testing.T) {
+	h := sampleHeader(t)
+	plan, err := selectedPlan(h, attentionNames, attentionPayloadBytes)
+	if err != nil || len(plan) != 14 {
+		t.Fatal(plan, err)
+	}
+	var total, reused int64
+	seen := map[string]bool{}
+	for _, p := range plan {
+		if seen[p.Name] {
+			t.Fatal("duplicate attention tensor")
+		}
+		seen[p.Name] = true
+		total += p.Bytes
+		if strings.Contains(p.Name, ".wkv.") || strings.Contains(p.Name, ".wo_a.") {
+			reused += p.Bytes
+		}
+	}
+	if total != 126753280 || total-reused != 90542080 || total+int64(len(h.Prefix)) > 128<<20 {
+		t.Fatal(total, reused)
+	}
+	if !seen["layers.0.attn_norm.weight"] || !seen["layers.0.attn.attn_sink"] {
+		t.Fatal("missing attention norm/sink")
+	}
+}
+
+func TestExplicitSampleBudget(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		h := http.Header{}
+		h.Set("Content-Range", "bytes 0-0/100")
+		return &http.Response{StatusCode: 206, Header: h, ContentLength: 1, Body: io.NopCloser(strings.NewReader("x"))}, nil
+	})}
+	for _, tc := range []struct {
+		used, budget int64
+		ok           bool
+	}{
+		{maxDownload, 0, false}, {maxDownload, 128 << 20, true},
+		{(128 << 20) - 1, 128 << 20, true}, {128 << 20, 128 << 20, false},
+		{0, (128 << 20) + 1, false}, {0, -1, false},
+	} {
+		f := fetcher{ctx: context.Background(), client: client, bytes: tc.used, budget: tc.budget}
+		_, _, _, err := f.get("https://example.test/shard", 0, 0)
+		if (err == nil) != tc.ok {
+			t.Fatalf("budget case %+v: %v", tc, err)
+		}
+	}
+}

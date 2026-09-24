@@ -174,6 +174,29 @@ func route(s *scope, x, weight, bias mlx.Array, c RouterConfig) (mlx.Array, mlx.
 // The caller owns the arrays and must keep them open during use.
 type ExpertWeights struct{ Gate, Up, Down mlx.Array }
 
+// Expert computes one float32 SwiGLU expert for x [tokens,dim]. routing must
+// be [tokens,1]; use ones for an unweighted expert. A positive limit clips the
+// up projection on both sides and the gate only from above, matching training.
+// Routing weights are applied before the down projection. All inputs are
+// borrowed; the returned array is owned. This does not quantize activations.
+func Expert(x mlx.Array, w ExpertWeights, routing mlx.Array, limit float32) (mlx.Array, error) {
+	return one(func(s *scope) mlx.Array {
+		if limit < 0 || math.IsNaN(float64(limit)) || math.IsInf(float64(limit), 0) {
+			s.err = fmt.Errorf("deepseek: invalid SwiGLU limit")
+			return mlx.Array{}
+		}
+		s.check(x, "expert input", -1, -1)
+		if s.err != nil {
+			return mlx.Array{}
+		}
+		s.check(routing, "expert routing", x.Shape()[0], 1)
+		if s.err != nil {
+			return mlx.Array{}
+		}
+		return expert(s, x, w, routing, limit)
+	})
+}
+
 func expert(s *scope, x mlx.Array, w ExpertWeights, routing mlx.Array, limit float32) mlx.Array {
 	dim := x.Shape()[1]
 	s.check(w.Gate, "expert gate", -1, dim)

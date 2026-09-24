@@ -1,4 +1,4 @@
-// fetch-deepseek-sample downloads three real weight/scale pairs, not a model.
+// fetch-deepseek-sample downloads bounded real tensor samples, not a model.
 package main
 
 import (
@@ -12,18 +12,29 @@ import (
 )
 
 func main() {
-	out := flag.String("out", "", "new output directory (parent must exist); downloads 42,478,080 payload bytes")
+	out := flag.String("out", "", "new output directory (parent must exist)")
+	set := flag.String("set", "projections", "projections (42.5 MB), expert (18.8 MB), or attention (126.8 MB)")
+	reuse := flag.String("reuse", "", "existing sample directory to reuse verified files from (expert or attention)")
 	flag.Parse()
-	if *out == "" || flag.NArg() != 0 {
+	if *out == "" || flag.NArg() != 0 || (*set != "projections" && *set != "expert" && *set != "attention") || (*set == "projections" && *reuse != "") {
 		flag.Usage()
 		os.Exit(2)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-	if err := deepseekaudit.DownloadSample(ctx, *out, func(s string) { fmt.Fprintln(os.Stderr, s) }); err != nil {
+	progress := func(s string) { fmt.Fprintln(os.Stderr, s) }
+	var err error
+	if *set == "attention" {
+		err = deepseekaudit.DownloadAttentionSample(ctx, *out, *reuse, progress)
+	} else if *set == "expert" {
+		err = deepseekaudit.DownloadExpertSample(ctx, *out, *reuse, progress)
+	} else {
+		err = deepseekaudit.DownloadSample(ctx, *out, progress)
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	fmt.Println("Saved three weight/scale pairs and manifest.json to", *out)
+	fmt.Println("Saved", *set, "tensors and manifest.json to", *out)
 	fmt.Println("Raw validation samples only; not a loadable checkpoint.")
 }

@@ -40,6 +40,18 @@ after a failure. The output's parent directory must already exist.
 These are real pretrained parameter samples for decoder validation, **not a
 model that can generate text**. No full shard or Engram table is downloaded.
 
+The same downloader accepts `-set expert` for all three layer-0 expert-0
+weight/scale pairs (18,800,640 bytes). `-reuse models/deepseek-v41-sample` copies
+the already downloaded `w1` pair after checking provenance, layout, length and
+SHA-256, so only 12,533,760 new payload bytes are fetched. It never modifies the
+reuse directory. See [complete expert validation](../EXPERT_VALIDATION.md).
+
+`-set attention` fetches all layer-0 attention tensors and the input norm
+(126,753,280 bytes). Reusing the initial samples reduces new payload to
+90,542,080 bytes. This selection has a bounded 128 MiB download allowance,
+including its header; the metadata-only audit retains its 64 MiB default.
+See [real attention validation](../ATTENTION_VALIDATION.md).
+
 ## Validate the Downloaded Samples
 
 Use a Python 3.12 environment with `torch==2.14.0`, separate from application
@@ -87,6 +99,23 @@ reference data stay under the ignored `models/` directory. See
 ```go
 err := quant.Decode(dst, data, scales, rows, cols, quant.FP8Block32, quant.Float32)
 ```
+
+For files or other streams, the reusable reader avoids retaining the full
+encoded matrix:
+
+```go
+values, err := quant.ReadMatrix(weightReader, scaleReader, rows, cols,
+    quant.FP4Row32, quant.Float32, 64<<20)
+```
+
+The budget covers the returned float32 buffer plus 32-row input scratch buffers
+and is checked before allocating or reading. It does **not** include reader
+internals, Go allocator overhead, other retained matrices or native MLX copies.
+An oversized matrix returns `ErrMemoryBudget`; the reader also rejects truncated,
+trailing or nonfinite data and returns no partial result. Readers must contain
+exactly one raw tensor each. Caller-supplied dimensions and layout must come
+from validated metadata, and callers own integrity checks; `io.TeeReader` can
+hash both input streams while decoding. This is not a safetensors loader.
 
 The caller supplies all buffers. `dst` must contain exactly `rows*cols` float32
 slots. `data` is a packed row-major matrix and `scales` contains E8M0 bytes.

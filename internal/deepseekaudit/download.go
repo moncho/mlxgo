@@ -117,6 +117,7 @@ type fetcher struct {
 	ctx    context.Context
 	client *http.Client
 	bytes  int64
+	budget int64 // Zero retains the metadata-only default; samples cap at 128 MiB.
 }
 
 func (f *fetcher) get(url string, start, end int64) ([]byte, int64, string, error) {
@@ -128,7 +129,11 @@ func (f *fetcher) get(url string, start, end int64) ([]byte, int64, string, erro
 		limit = end - start + 1
 		url += "?mlxgo_metadata_range=" + strconv.FormatInt(start, 10) + "-" + strconv.FormatInt(end, 10)
 	}
-	if f.bytes+limit > maxDownload {
+	budget := f.budget
+	if budget == 0 {
+		budget = maxDownload
+	}
+	if budget < 0 || budget > 128<<20 || f.bytes+limit > budget {
 		return nil, 0, "", fmt.Errorf("audit: metadata download budget exceeded")
 	}
 	req, err := http.NewRequestWithContext(f.ctx, http.MethodGet, url, nil)

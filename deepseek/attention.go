@@ -97,12 +97,24 @@ func (session *Session) attention(s *scope, x mlx.Array, layer int, shared *atte
 	}
 	o := sparseAttentionTensor(s, q, kv, w[p+"attn_sink"], indices, float32(1/math.Sqrt(float64(c.HeadDim))))
 	o = rotary(s, o, c, r, start, 1, true)
-	o = s.add(mlx.Reshape(o, []int{1, n, c.Groups, 1, c.Heads * c.HeadDim / c.Groups}))
-	wa := s.add(mlx.Reshape(w[p+"wo_a.weight"], []int{c.Groups, c.ORank, c.Heads * c.HeadDim / c.Groups}))
+	o = groupedAttentionProjection(s, o, w[p+"wo_a.weight"], c)
+	return s.linear(o, w[p+"wo_b.weight"])
+}
+
+func groupedAttentionProjection(s *scope, o, weight mlx.Array, c Config) mlx.Array {
+	if s.err != nil {
+		return mlx.Array{}
+	}
+	n, width := o.Shape()[1], c.Heads*c.HeadDim/c.Groups
+	// Put groups on the batch axis and tokens on the matrix row axis. The
+	// equivalent rank-5 broadcasted GEMV crashes with MLX 0.32 CPU at real sizes.
+	o = s.add(mlx.Reshape(o, []int{n, c.Groups, width}))
+	o = s.add(mlx.TransposeAxes(o, []int{1, 0, 2}))
+	wa := s.add(mlx.Reshape(weight, []int{c.Groups, c.ORank, width}))
 	wa = s.add(mlx.TransposeAxes(wa, []int{0, 2, 1}))
 	o = s.add(mlx.Matmul(o, wa))
-	o = s.add(mlx.Reshape(o, []int{1, n, c.Groups * c.ORank}))
-	return s.linear(o, w[p+"wo_b.weight"])
+	o = s.add(mlx.TransposeAxes(o, []int{1, 0, 2}))
+	return s.add(mlx.Reshape(o, []int{1, n, c.Groups * c.ORank}))
 }
 
 func (session *Session) compress(s *scope, x mlx.Array, layer int) (mlx.Array, int) {

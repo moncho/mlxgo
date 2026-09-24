@@ -11,7 +11,13 @@ The [released-checkpoint audit](CHECKPOINT_AUDIT.md) now maps the pinned release
 entire text-weight and scale inventory using headers only. It identifies the
 required FP8/packed-FP4 conversions without loading weights. Those storage
 layouts now have [bounded CPU reference decoders](quant/README.md), numerically
-validated on small fixtures but not integrated with released checkpoint loading.
+validated on small fixtures and selected real weights but not integrated with
+released checkpoint loading. A [complete released expert](EXPERT_VALIDATION.md)
+now passes float32 reference comparisons on CPU and GPU, including clipping and
+routing weights. This does not validate the released activation-quantized kernels.
+The [real layer-0 attention validation](ATTENTION_VALIDATION.md) covers the full
+sliding-window path, prefill, cached decoding, window rollover and session
+isolation. It also caught and fixed a real-shape CPU grouped-projection failure.
 Reproduce the report offline:
 
 ```sh
