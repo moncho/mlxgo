@@ -3,7 +3,7 @@
 This package runs a reduced, float32-activation DeepSeek-V4.1 text backbone with real
 prefill and incremental cache paths. **It cannot load the released checkpoint,
 generate meaningful text with the included untrained weights, or fine-tune the
-released model.** Parameters default to float32, with optional packed attention KV
+released model.** Parameters default to float32, with optional packed attention
 weights supplied explicitly at construction. Engram is supported
 with prepared hash metadata and unquantized tables. Vision, DSpark, production
 quantization and pretrained tokenizer integration remain unsupported.
@@ -35,8 +35,10 @@ integrates packed caches and index-query quantization into attention, with
 [synthetic and real-weight validation](QUANTIZED_CACHE_VALIDATION.md).
 An opt-in [packed FP8 projection](quant/FP8_LINEAR_VALIDATION.md) now calls MLX's
 native MXFP8 kernel and passes real layer-0 `wkv` comparisons on CPU and GPU.
-The adapter can also replace selected session `wkv` projections through explicit
-model options, with [real attention validation and profiling](FP8_ATTENTION_VALIDATION.md).
+The adapter can also replace selected session `wkv`, `wq_b` and grouped `wo_a` projections through
+explicit model options, with [KV validation](FP8_ATTENTION_VALIDATION.md) and
+[query validation](FP8_QUERY_VALIDATION.md) and
+[grouped output/combined validation and profiling](FP8_OUTPUT_VALIDATION.md).
 Activation-quantized GEMM and packed FP4 expert execution remain unsupported.
 Reproduce the report offline:
 
@@ -91,30 +93,47 @@ goroutines. Sessions borrow the model, which must remain open until they finish.
 ### Packed Attention Weights
 
 The default constructor remains entirely float32. To replace selected attention
-KV weights with checkpoint FP8 bytes, omit their float32 names from `parameters`:
+weights with checkpoint FP8 bytes, omit their float32 names from `parameters`:
 
 ```go
 model, err := deepseek.NewModelWithOptions(config, parameters, deepseek.ModelOptions{
     FP8AttentionKV: map[int]deepseek.FP8AttentionWeight{
-        0: {Data: wkvBytes, Scales: blockScaleBytes},
+        0: {Data: wkvBytes, Scales: kvBlockScaleBytes},
+    },
+    FP8AttentionQB: map[int]deepseek.FP8AttentionWeight{
+        0: {Data: wqbBytes, Scales: qbBlockScaleBytes},
+    },
+    FP8AttentionOA: map[int]deepseek.FP8AttentionWeight{
+        0: {Data: woaBytes, Scales: oaBlockScaleBytes},
     },
 })
 ```
 
-For layer 0 this replaces `layers.0.attn.wkv.weight`. The logical shape is
-`[HeadDim, Dim]`; both dimensions must be divisible by 32. Values are E4M3FN
-bytes with one E8M0 scale per 32x32 block. The constructor copies the bytes,
+These options are independent. For layer 0 they replace `layers.0.attn.wkv.weight`
+with logical shape `[HeadDim, Dim]`, and `layers.0.attn.wq_b.weight` with shape
+`[Heads*HeadDim, QRank]`. Both dimensions must be divisible by 32. The separate
+compressor indexer's `wq_b` is not replaced.
+
+`FP8AttentionOA` replaces `layers.0.attn.wo_a.weight` with logical shape
+`[Groups*ORank, Heads*HeadDim/Groups]`. Each group projects only its own heads;
+`ORank` and the per-group input width must be divisible by 32. The reference
+converts this matrix to BF16. Packed execution is accepted **only when every
+decoded weight is already exactly BF16-representable**; rounding-changing values
+are rejected, not silently approximated. The sampled real layer-0 matrix passes
+this check. This is not general BF16 conversion support or BF16 activation parity.
+
+Values are E4M3FN bytes with one E8M0 scale per 32x32 block. The constructor copies the bytes,
 retains other parameters independently, and rejects duplicate float32 weights,
 invalid layers, malformed payloads and nonfinite decoded weights. Close the
 model to release both packed and ordinary parameters. Options cannot be changed
 after construction; all sessions use the selected projections.
 
-Only `wkv` changes. Activations, normalization and other projections remain
-float32. No float32 copy of the replaced weight is retained. This does not
+Only selected `wkv`/`wq_b`/`wo_a` weights change. Activations, normalization and
+other projections remain float32. No float32 copy of the replaced weight is retained. This does not
 enable released checkpoint loading, BF16 parity or activation-quantized GEMM.
 The common loader and exported float32 bundles are unchanged. CPU execution can
 be slower, so selection remains explicit; see the
-[whole-attention measurements](FP8_ATTENTION_VALIDATION.md).
+[whole-attention measurements](FP8_OUTPUT_VALIDATION.md).
 
 ### Packed Caches
 
@@ -245,8 +264,8 @@ arrays. These choices target small correctness workloads, not production speed.
 
 Arrays passed to these functions are borrowed. The caller owns every returned
 array and must close it. Projection matrices have `[output,input] orientation.
-The building-block APIs reject non-float32 arrays. Packed `wkv` weights are
-accepted only through the explicit model option, not implicit dtype conversion.
+The building-block APIs reject non-float32 arrays. Packed `wkv`/`wq_b`/`wo_a` weights are
+accepted only through explicit model options, not implicit dtype conversion.
 
 ## Architecture Audit
 
@@ -259,8 +278,8 @@ reference code introduce these requirements beyond memory capacity:
 | Sparse indexer | Float32 scoring, candidate filtering and sharing implemented; quantized scoring and optimized top-k remain |
 | Single-pass mHC | Complete block wiring implemented and compared through model logits |
 | Engram | Float32 remapping/hash/lookup/gating implemented; released tokenizer metadata, FP8 table loading and rounding remain |
-| Checkpoint storage | Indexed I/O, released text mapping and bounded CPU FP8/FP4 decoding/BF16 rounding tested; opt-in native FP8 `wkv` validated; full released checkpoint loading and packed FP4 expert execution remain unsupported |
-| Cache quantization | Opt-in packed sliding-window KV, compressed KV and index keys, plus quantized index queries; float32 activations and separate opt-in packed `wkv` weights, no activation-quantized GEMM |
+| Checkpoint storage | Indexed I/O, released text mapping and bounded CPU FP8/FP4 decoding/BF16 rounding tested; opt-in native FP8 `wkv`/`wq_b`/`wo_a` validated with a BF16-exactness guard for `wo_a`; full released checkpoint loading and packed FP4 expert execution remain unsupported |
+| Cache quantization | Opt-in packed sliding-window KV, compressed KV and index keys, plus quantized index queries; float32 activations and separate opt-in packed attention weights, no activation-quantized GEMM |
 | Text input/output | Official encoding rules and tokenizer integration; no assumption that the existing Qwen chat formatting applies |
 | Vision | DeepSeek-ViT, image processing, projection and vision-specific routing bias |
 | DSpark | Draft path and its state; the released minimal reference itself does not supply a speculative generation loop |

@@ -1,5 +1,5 @@
 // Package deepseek provides an experimental DeepSeek-V4.1 text backbone with
-// float32 activations, optional packed attention KV weights, and differentiable
+// float32 activations, optional packed attention weights, and differentiable
 // building blocks. It is not a pretrained model loader.
 // Inputs are borrowed float32 arrays; returned arrays are owned by the caller.
 package deepseek

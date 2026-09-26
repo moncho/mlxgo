@@ -117,7 +117,9 @@ go test -tags 'mlx mlxruntime' ./deepseek -run '^$' \
 `mlx.ResetPeakMemory` resets only the process-wide peak statistic. Coordinate
 profiling with other MLX users and evaluate work before reading counters.
 
-Next: validate other FP8 attention projections individually, including any
-required BF16 conversion/grouped layout, before expanding model options or
-attempting packed FP4 experts. Do not infer their correctness or performance
-from this single replaced matrix.
+The subsequent [query projection report](FP8_QUERY_VALIDATION.md) validates
+packed `wq_b` independently and together with `wkv`. The numbers above remain
+the original KV-only measurements. The [grouped output report](FP8_OUTPUT_VALIDATION.md)
+separately validates `wo_a` with a BF16-exactness guard. Packed FP4 experts still
+need separate validation; do not infer their correctness or performance from
+these replaced matrices.

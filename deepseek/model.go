@@ -7,16 +7,18 @@ import (
 	"github.com/moncho/mlxgo/lm"
 	"slices"
 	"sort"
+	"strings"
 )
 
-// Model owns immutable parameters, with optional packed attention KV weights.
+// Model owns immutable parameters, with optional packed attention weights.
 // Separate sessions may run from arbitrary goroutines. Close and native work
 // are serialized on the MLX worker.
 type Model struct {
-	config         Config
-	weights        map[string]mlx.Array
-	fp8AttentionKV map[int]*quant.FP8Linear
-	closed         bool
+	config             Config
+	weights            map[string]mlx.Array
+	fp8Attention       map[string]*quant.FP8Linear
+	fp8AttentionOutput map[string][]*quant.FP8Linear
+	closed             bool
 }
 
 // NewModel validates and retains independent handles for all parameters. Inputs
@@ -26,7 +28,7 @@ func NewModel(c Config, parameters map[string]mlx.Array) (m *Model, err error) {
 }
 
 // FP8AttentionWeight contains E4M3FN row-major weights and E8M0 scales for
-// 32x32 blocks. The logical shape is [HeadDim, Dim] from the model config.
+// 32x32 blocks. The logical shape is determined by the selected projection.
 // The constructor copies these bytes; callers must not mutate them during construction.
 type FP8AttentionWeight struct {
 	Data, Scales []byte
@@ -40,6 +42,18 @@ type ModelOptions struct {
 	// float32. HeadDim and Dim must be divisible by 32. CPU execution can be
 	// substantially slower. No automatic quantization or checkpoint loading occurs.
 	FP8AttentionKV map[int]FP8AttentionWeight
+	// FP8AttentionQB replaces layers.<index>.attn.wq_b.weight, the query
+	// expansion projection. Its shape is [Heads*HeadDim, QRank]; both dimensions
+	// must be divisible by 32. Ownership and dtype rules match FP8AttentionKV.
+	// This does not replace the compressor indexer's separate wq_b projection.
+	FP8AttentionQB map[int]FP8AttentionWeight
+	// FP8AttentionOA replaces layers.<index>.attn.wo_a.weight, using one packed
+	// projection per output group. The shape is [Groups*ORank, Heads*HeadDim/Groups].
+	// ORank and the per-group input width must be divisible by 32. Ownership
+	// rules match FP8AttentionKV. Weights must already be exactly representable
+	// after the reference BF16 conversion; rounding-changing values are rejected.
+	// This does not quantize activations or replace wo_b. CPU can be much slower.
+	FP8AttentionOA map[int]FP8AttentionWeight
 }
 
 // NewModelWithOptions retains the float32 parameters and copies explicitly
@@ -51,21 +65,26 @@ func NewModelWithOptions(c Config, parameters map[string]mlx.Array, options Mode
 	if err != nil {
 		return nil, err
 	}
-	replacements := make(map[string]int, len(options.FP8AttentionKV))
-	for layer := range options.FP8AttentionKV {
-		if layer < 0 || layer >= c.Layers {
-			return nil, fmt.Errorf("deepseek: FP8 attention layer %d outside model", layer)
+	replacements := make(map[string]FP8AttentionWeight, len(options.FP8AttentionKV)+len(options.FP8AttentionQB)+len(options.FP8AttentionOA))
+	for _, projection := range []struct {
+		name    string
+		weights map[int]FP8AttentionWeight
+	}{{"wkv", options.FP8AttentionKV}, {"wq_b", options.FP8AttentionQB}, {"wo_a", options.FP8AttentionOA}} {
+		for layer, weight := range projection.weights {
+			if layer < 0 || layer >= c.Layers {
+				return nil, fmt.Errorf("deepseek: FP8 attention layer %d outside model", layer)
+			}
+			name := fmt.Sprintf("layers.%d.attn.%s.weight", layer, projection.name)
+			if _, exists := parameters[name]; exists {
+				return nil, fmt.Errorf("deepseek: duplicate float32 and FP8 parameter %s", name)
+			}
+			replacements[name] = weight
 		}
-		name := fmt.Sprintf("layers.%d.attn.wkv.weight", layer)
-		if _, exists := parameters[name]; exists {
-			return nil, fmt.Errorf("deepseek: duplicate float32 and FP8 parameter %s", name)
-		}
-		replacements[name] = layer
 	}
 	if len(parameters)+len(replacements) != len(shapes) {
 		return nil, fmt.Errorf("deepseek: expected %d parameters, got %d float32 and %d FP8", len(shapes), len(parameters), len(replacements))
 	}
-	m = &Model{config: c, weights: make(map[string]mlx.Array, len(shapes)), fp8AttentionKV: make(map[int]*quant.FP8Linear, len(replacements))}
+	m = &Model{config: c, weights: make(map[string]mlx.Array, len(shapes)), fp8Attention: make(map[string]*quant.FP8Linear, len(replacements))}
 	err = mlx.Batch(func() error {
 		s := &scope{}
 		keys := make([]string, 0, len(shapes))
@@ -74,8 +93,8 @@ func NewModelWithOptions(c Config, parameters map[string]mlx.Array, options Mode
 		}
 		sort.Strings(keys)
 		for _, name := range keys {
-			if layer, ok := replacements[name]; ok {
-				if err := m.initFP8AttentionKV(layer, options.FP8AttentionKV[layer]); err != nil {
+			if weight, ok := replacements[name]; ok {
+				if err := m.initFP8Attention(name, shapes[name], weight); err != nil {
 					return err
 				}
 				continue
@@ -104,15 +123,26 @@ func NewModelWithOptions(c Config, parameters map[string]mlx.Array, options Mode
 }
 
 // Called only while constructing an unpublished model on the MLX worker.
-func (m *Model) initFP8AttentionKV(layer int, weight FP8AttentionWeight) error {
-	p, err := quant.NewFP8Linear(weight.Data, weight.Scales, m.config.HeadDim, m.config.Dim, quant.FP8Block32)
+func (m *Model) initFP8Attention(name string, shape []int, weight FP8AttentionWeight) error {
+	if strings.HasSuffix(name, ".attn.wo_a.weight") {
+		groups, err := newFP8OutputGroups(weight, m.config.Groups, m.config.ORank, shape[1])
+		if err != nil {
+			return fmt.Errorf("deepseek: FP8 attention %s: %w", name, err)
+		}
+		if m.fp8AttentionOutput == nil {
+			m.fp8AttentionOutput = make(map[string][]*quant.FP8Linear)
+		}
+		m.fp8AttentionOutput[name] = groups
+		return nil
+	}
+	p, err := quant.NewFP8Linear(weight.Data, weight.Scales, shape[0], shape[1], quant.FP8Block32)
 	if err != nil {
-		return fmt.Errorf("deepseek: FP8 attention layer %d: %w", layer, err)
+		return fmt.Errorf("deepseek: FP8 attention %s: %w", name, err)
 	}
-	if m.fp8AttentionKV == nil {
-		m.fp8AttentionKV = make(map[int]*quant.FP8Linear)
+	if m.fp8Attention == nil {
+		m.fp8Attention = make(map[string]*quant.FP8Linear)
 	}
-	m.fp8AttentionKV[layer] = p
+	m.fp8Attention[name] = p
 	return nil
 }
 
@@ -131,12 +161,20 @@ func (m *Model) Close() error {
 		}
 		m.weights = nil
 		err := mlx.CloseArrays(arrays)
-		for _, p := range m.fp8AttentionKV {
+		for _, p := range m.fp8Attention {
 			if e := p.Close(); err == nil {
 				err = e
 			}
 		}
-		m.fp8AttentionKV = nil
+		m.fp8Attention = nil
+		for _, groups := range m.fp8AttentionOutput {
+			for _, p := range groups {
+				if e := p.Close(); err == nil {
+					err = e
+				}
+			}
+		}
+		m.fp8AttentionOutput = nil
 		return err
 	})
 }

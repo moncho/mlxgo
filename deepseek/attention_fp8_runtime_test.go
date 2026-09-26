@@ -5,7 +5,6 @@ package deepseek
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -15,31 +14,39 @@ import (
 	mlx "github.com/moncho/mlxgo"
 )
 
-func loadSampleAttentionModel(t testing.TB, dir string, ref attentionReference, fp8 bool) *Model {
+type fp8AttentionSelection struct{ kv, qb, oa bool }
+
+func (s fp8AttentionSelection) selects(name string) bool {
+	return (s.kv && strings.HasSuffix(name, ".attn.wkv.weight")) || (s.qb && strings.HasSuffix(name, ".attn.wq_b.weight")) || (s.oa && strings.HasSuffix(name, ".attn.wo_a.weight"))
+}
+
+func readPackedAttentionWeight(t testing.TB, dir string, m attentionTensorReference) FP8AttentionWeight {
+	t.Helper()
+	read := func(name string, size int, hash string) []byte {
+		f, err := os.Open(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		b, err := io.ReadAll(io.LimitReader(f, int64(size)+1))
+		h := sha256.Sum256(b)
+		if err != nil || len(b) != size || hex.EncodeToString(h[:]) != hash {
+			t.Fatalf("packed attention weight mismatch: %s: %v", name, err)
+		}
+		return b
+	}
+	count := m.Shape[0] * m.Shape[1]
+	return FP8AttentionWeight{Data: read(m.Name+".bin", count, m.DataSHA), Scales: read(strings.TrimSuffix(m.Name, ".weight")+".scale.bin", count/1024, m.ScalesSHA)}
+}
+
+func loadSampleAttentionModel(t testing.TB, dir string, ref attentionReference, fp8 fp8AttentionSelection) *Model {
 	t.Helper()
 	model := &Model{config: ref.Config.Config, weights: map[string]mlx.Array{}}
 	t.Cleanup(func() { model.Close() })
 	for _, m := range ref.Tensors {
-		if fp8 && m.Name == fmt.Sprintf("layers.%d.attn.wkv.weight", ref.Layer) {
-			read := func(name string, size int, hash string) []byte {
-				f, err := os.Open(filepath.Join(dir, name))
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer f.Close()
-				b, err := io.ReadAll(io.LimitReader(f, int64(size)+1))
-				h := sha256.Sum256(b)
-				if err != nil || len(b) != size || hex.EncodeToString(h[:]) != hash {
-					t.Fatalf("packed attention weight mismatch: %s: %v", name, err)
-				}
-				return b
-			}
-			count := m.Shape[0] * m.Shape[1]
-			weight := FP8AttentionWeight{
-				Data:   read(m.Name+".bin", count, m.DataSHA),
-				Scales: read(strings.TrimSuffix(m.Name, ".weight")+".scale.bin", count/1024, m.ScalesSHA),
-			}
-			if err := mlx.Batch(func() error { return model.initFP8AttentionKV(ref.Layer, weight) }); err != nil {
+		if fp8.selects(m.Name) {
+			weight := readPackedAttentionWeight(t, dir, m)
+			if err := mlx.Batch(func() error { return model.initFP8Attention(m.Name, m.Shape, weight) }); err != nil {
 				t.Fatal(err)
 			}
 			continue
@@ -54,8 +61,11 @@ func loadSampleAttentionModel(t testing.TB, dir string, ref attentionReference, 
 			t.Fatalf("native upload mismatch: %s: %v", m.Name, err)
 		}
 	}
-	if fp8 {
-		if _, exists := model.weights[fmt.Sprintf("layers.%d.attn.wkv.weight", ref.Layer)]; exists || model.fp8AttentionKV[ref.Layer] == nil {
+	for _, m := range ref.Tensors {
+		if !fp8.selects(m.Name) {
+			continue
+		}
+		if _, exists := model.weights[m.Name]; exists || (model.fp8Attention[m.Name] == nil && len(model.fp8AttentionOutput[m.Name]) == 0) {
 			t.Fatal("packed projection not substituted")
 		}
 	}
@@ -96,17 +106,20 @@ func BenchmarkReleasedAttentionFP8(b *testing.B) {
 					name = "decode128"
 				}
 				b.Run(name, func(b *testing.B) {
-					for _, packed := range []bool{false, true} {
-						name := "float32"
-						if packed {
-							name = "fp8"
-						}
-						b.Run(name, func(b *testing.B) {
+					for _, mode := range []struct {
+						name      string
+						selection fp8AttentionSelection
+					}{
+						{"float32", fp8AttentionSelection{}}, {"kv", fp8AttentionSelection{kv: true}},
+						{"qb", fp8AttentionSelection{qb: true}}, {"kv_qb", fp8AttentionSelection{kv: true, qb: true}},
+						{"oa", fp8AttentionSelection{oa: true}}, {"kv_qb_oa", fp8AttentionSelection{kv: true, qb: true, oa: true}},
+					} {
+						b.Run(mode.name, func(b *testing.B) {
 							baseline, err := mlx.GetMemoryUsage()
 							if err != nil {
 								b.Fatal(err)
 							}
-							m := loadSampleAttentionModel(b, dir, ref, packed)
+							m := loadSampleAttentionModel(b, dir, ref, mode.selection)
 							defer m.Close()
 							prefill, err := mlx.NewFloat32(attentionInputs(0, 128, m.config.Dim), []int{1, 128, m.config.Dim})
 							if err != nil {
@@ -181,7 +194,7 @@ func BenchmarkReleasedAttentionFP8(b *testing.B) {
 								for _, dim := range weight.Shape {
 									count *= dim
 								}
-								if packed && weight.Name == "layers.0.attn.wkv.weight" {
+								if mode.selection.selects(weight.Name) {
 									payload += count + count/32
 								} else {
 									payload += 4 * count

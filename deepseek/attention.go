@@ -25,9 +25,9 @@ func (session *Session) attention(s *scope, x mlx.Array, layer int, shared *atte
 	start := session.offset
 	r := c.Ratios[layer]
 	qr := s.add(mlx.RMSNorm(s.linear(x, w[p+"wq_a.weight"]), w[p+"q_norm.weight"], c.Hyper.NormEpsilon))
-	q := s.add(mlx.Reshape(s.linear(qr, w[p+"wq_b.weight"]), []int{1, n, c.Heads, c.HeadDim}))
+	q := s.add(mlx.Reshape(session.attentionProjection(s, qr, p+"wq_b.weight"), []int{1, n, c.Heads, c.HeadDim}))
 	q = rotary(s, q, c, r, start, 1, false)
-	kv := s.add(mlx.RMSNorm(session.attentionKV(s, x, layer), w[p+"kv_norm.weight"], c.Hyper.NormEpsilon))
+	kv := s.add(mlx.RMSNorm(session.attentionProjection(s, x, p+"wkv.weight"), w[p+"kv_norm.weight"], c.Hyper.NormEpsilon))
 	kv = rotary(s, kv, c, r, start, 1, false)
 	var windowScale mlx.Array
 	if session.options.QuantizedCaches {
@@ -117,22 +117,22 @@ func (session *Session) attention(s *scope, x mlx.Array, layer int, shared *atte
 	}
 	o := sparseAttentionTensor(s, q, kv, w[p+"attn_sink"], indices, float32(1/math.Sqrt(float64(c.HeadDim))))
 	o = rotary(s, o, c, r, start, 1, true)
-	o = groupedAttentionProjection(s, o, w[p+"wo_a.weight"], c)
+	o = session.attentionOutputProjection(s, o, p+"wo_a.weight")
 	return s.linear(o, w[p+"wo_b.weight"])
 }
 
-func (session *Session) attentionKV(s *scope, x mlx.Array, layer int) mlx.Array {
+func (session *Session) attentionProjection(s *scope, x mlx.Array, name string) mlx.Array {
 	if s.err != nil {
 		return mlx.Array{}
 	}
-	if packed := session.model.fp8AttentionKV[layer]; packed != nil {
-		c := session.model.config
-		n := x.Shape()[1]
-		flat := s.add(mlx.Reshape(x, []int{n, c.Dim}))
+	if packed := session.model.fp8Attention[name]; packed != nil {
+		shape := x.Shape()
+		n := shape[1]
+		flat := s.add(mlx.Reshape(x, []int{n, shape[2]}))
 		y := s.add(packed.Forward(flat))
-		return s.add(mlx.Reshape(y, []int{1, n, c.HeadDim}))
+		return s.add(mlx.Reshape(y, []int{1, n, -1}))
 	}
-	return s.linear(x, session.model.weights[fmt.Sprintf("layers.%d.attn.wkv.weight", layer)])
+	return s.linear(x, session.model.weights[name])
 }
 
 func groupedAttentionProjection(s *scope, o, weight mlx.Array, c Config) mlx.Array {

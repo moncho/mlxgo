@@ -127,14 +127,36 @@ func TestReleasedQuantizedAttentionForward(t *testing.T) {
 }
 
 func testReleasedAttentionLayerMode(t *testing.T, layer int, packed bool) {
-	testReleasedAttentionLayerOptions(t, layer, packed, false)
+	testReleasedAttentionLayerOptions(t, layer, packed, fp8AttentionSelection{})
 }
 
 func TestReleasedFP8AttentionForward(t *testing.T) {
-	testReleasedAttentionLayerOptions(t, 0, false, true)
+	testReleasedAttentionLayerOptions(t, 0, false, fp8AttentionSelection{kv: true})
 }
 
-func testReleasedAttentionLayerOptions(t *testing.T, layer int, packed, fp8 bool) {
+func TestReleasedFP8QueryAttentionForward(t *testing.T) {
+	for _, mode := range []struct {
+		name      string
+		selection fp8AttentionSelection
+	}{
+		{"qb", fp8AttentionSelection{qb: true}}, {"kv_qb", fp8AttentionSelection{kv: true, qb: true}},
+	} {
+		t.Run(mode.name, func(t *testing.T) { testReleasedAttentionLayerOptions(t, 0, false, mode.selection) })
+	}
+}
+
+func TestReleasedFP8OutputAttentionForward(t *testing.T) {
+	for _, mode := range []struct {
+		name      string
+		selection fp8AttentionSelection
+	}{
+		{"oa", fp8AttentionSelection{oa: true}}, {"kv_qb_oa", fp8AttentionSelection{kv: true, qb: true, oa: true}},
+	} {
+		t.Run(mode.name, func(t *testing.T) { testReleasedAttentionLayerOptions(t, 0, false, mode.selection) })
+	}
+}
+
+func testReleasedAttentionLayerOptions(t *testing.T, layer int, packed bool, fp8 fp8AttentionSelection) {
 	dir, ref := readAttentionLayerReferenceMode(t, layer, packed)
 	for _, device := range []struct {
 		name string

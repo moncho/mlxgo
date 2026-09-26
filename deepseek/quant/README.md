@@ -30,10 +30,14 @@ defer y.Close()
 
 The underlying `mlx.MXFP8Matmul` accepts packed UInt32 weights and UInt8 E8M0
 scales. It uses MLX's native weight-only kernel, supports CPU/GPU and composes
-with `Batch` and `Compile`. It does **not** quantize activations, apply BF16
+with `Batch` and `Compile`. It does **not** quantize activations or apply BF16
 checkpoint conversion. `deepseek.NewModelWithOptions` can explicitly install
-this adapter for selected attention KV projections; see
-[attention validation](../FP8_ATTENTION_VALIDATION.md).
+this adapter for selected attention KV/query and grouped output projections; see
+[KV validation](../FP8_ATTENTION_VALIDATION.md) and
+[query validation](../FP8_QUERY_VALIDATION.md) and
+[grouped output validation](../FP8_OUTPUT_VALIDATION.md). The grouped output
+option rejects any weight changed by the reference BF16 conversion; this does
+not add BF16 rounding to `NewFP8Linear` itself.
 This is an experimental inference adapter; training is not validated.
 Native accumulation and underflow follow MLX, not bit-exact CPU decoding.
 

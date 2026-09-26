@@ -27,6 +27,10 @@ This path does not apply `wo_a`'s BF16 conversion, handle grouped weights, pack
 FP4 experts, or automatically replace model projections. Inference is the
 tested use case; no training support is claimed for this adapter.
 
+A separate [grouped output adapter](../FP8_OUTPUT_VALIDATION.md) now composes
+one `FP8Linear` per `wo_a` group and rejects weights changed by BF16 conversion.
+That validation does not change the standalone contract or measurements here.
+
 ## Correctness
 
 The real-weight test verifies manifest, weight and scale hashes against the
