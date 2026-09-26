@@ -77,6 +77,16 @@ func NewFloat64(data []float64, shape []int) (Array, error) {
 	return arr, err
 }
 
+// NewUInt8 copies data into a new MLX uint8 array with the provided shape.
+func NewUInt8(data []byte, shape []int) (Array, error) {
+	if len(data) == 0 {
+		return newData(nil, 0, shape, UInt8)
+	}
+	arr, err := newData(unsafe.Pointer(&data[0]), len(data), shape, UInt8)
+	runtime.KeepAlive(data)
+	return arr, err
+}
+
 // NewInt32 copies data into a new MLX int32 array with the provided shape.
 func NewInt32(data []int32, shape []int) (Array, error) {
 	if len(data) == 0 {

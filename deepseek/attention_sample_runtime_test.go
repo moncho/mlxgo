@@ -127,6 +127,14 @@ func TestReleasedQuantizedAttentionForward(t *testing.T) {
 }
 
 func testReleasedAttentionLayerMode(t *testing.T, layer int, packed bool) {
+	testReleasedAttentionLayerOptions(t, layer, packed, false)
+}
+
+func TestReleasedFP8AttentionForward(t *testing.T) {
+	testReleasedAttentionLayerOptions(t, 0, false, true)
+}
+
+func testReleasedAttentionLayerOptions(t *testing.T, layer int, packed, fp8 bool) {
 	dir, ref := readAttentionLayerReferenceMode(t, layer, packed)
 	for _, device := range []struct {
 		name string
@@ -136,20 +144,7 @@ func testReleasedAttentionLayerMode(t *testing.T, layer int, packed bool) {
 			if err := device.set(); err != nil {
 				t.Fatal(err)
 			}
-			model := &Model{config: ref.Config.Config, weights: map[string]mlx.Array{}}
-			t.Cleanup(func() { model.Close() })
-			for _, m := range ref.Tensors {
-				t.Log("loading", m.Name)
-				a, err := mlx.NewFloat32(loadAttentionTensor(t, dir, m), m.Shape)
-				if err != nil {
-					t.Fatal(err)
-				}
-				model.weights[m.Name] = a
-				data, err := a.Float32Data()
-				if err != nil || matrixSHA(data) != m.DecodedSHA {
-					t.Fatalf("native upload mismatch: %s: %v", m.Name, err)
-				}
-			}
+			model := loadSampleAttentionModel(t, dir, ref, fp8)
 			fresh := func(t *testing.T) *Session {
 				s, err := model.NewSessionWithOptions(SessionOptions{QuantizedCaches: packed})
 				if err != nil {

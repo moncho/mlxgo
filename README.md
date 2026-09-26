@@ -378,6 +378,15 @@ make finetune-mlp
   `SoftmaxCrossEntropyAxis`, `CrossEntropyAxis`
 - Optimizers/utilities: `SGD`, `SGDWithLearningRate`, `NewAdamW`, `CloseArrays`
 
+## Memory Profiling
+
+`mlx.GetMemoryUsage()` reports process-wide MLX allocator active, cached and
+peak bytes, not Go heap size or process RSS. Evaluate pending work before reading
+the counters. `mlx.ResetPeakMemory()` resets the global peak statistic without
+freeing allocations; use it only during coordinated profiling, not within
+ordinary inference calls. The [packed attention report](deepseek/FP8_ATTENTION_VALIDATION.md)
+shows whole-attention timing and allocator measurements on real weight samples.
+
 ## Development Notes
 
 - MLX computation is lazy. Call `Eval` or a data-copy method such as

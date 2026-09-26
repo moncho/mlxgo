@@ -30,7 +30,7 @@ type releasedCase struct {
 	ProjectionL1 []float64 `json:"projection_l1"`
 }
 
-func readReleasedReference(t *testing.T) (string, []releasedCase) {
+func readReleasedReference(t testing.TB) (string, []releasedCase) {
 	t.Helper()
 	dir := os.Getenv("MLXGO_DEEPSEEK_SAMPLE_DIR")
 	if dir == "" {
@@ -78,7 +78,7 @@ func readReleasedReference(t *testing.T) (string, []releasedCase) {
 	return dir, ref.Cases
 }
 
-func readBoundedSample(t *testing.T, path string, limit int64) []byte {
+func readBoundedSample(t testing.TB, path string, limit int64) []byte {
 	t.Helper()
 	f, err := os.Open(path)
 	if err != nil {
@@ -92,7 +92,7 @@ func readBoundedSample(t *testing.T, path string, limit int64) []byte {
 	return b
 }
 
-func checkSampleHash(t *testing.T, data []byte, expected string) {
+func checkSampleHash(t testing.TB, data []byte, expected string) {
 	t.Helper()
 	h := sha256.Sum256(data)
 	if hex.EncodeToString(h[:]) != expected {
@@ -100,7 +100,7 @@ func checkSampleHash(t *testing.T, data []byte, expected string) {
 	}
 }
 
-func releasedBytes(t *testing.T, dir string, c releasedCase) ([]byte, []byte, Format) {
+func releasedBytes(t testing.TB, dir string, c releasedCase) ([]byte, []byte, Format) {
 	t.Helper()
 	n, ns, format := c.Rows*c.Cols, (c.Rows/32)*(c.Cols/32), FP8Block32
 	if c.Format == "fp4_row32" {

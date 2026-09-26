@@ -32,6 +32,11 @@ func NewFloat64(_ []float64, _ []int) (Array, error) {
 	return Array{}, errBuiltWithoutMLX
 }
 
+// NewUInt8 copies data into a new MLX uint8 array with the provided shape.
+func NewUInt8(_ []byte, _ []int) (Array, error) {
+	return Array{}, errBuiltWithoutMLX
+}
+
 func NewInt32(_ []int32, _ []int) (Array, error) {
 	return Array{}, errBuiltWithoutMLX
 }

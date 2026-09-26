@@ -3,31 +3,69 @@ package deepseek
 import (
 	"fmt"
 	mlx "github.com/moncho/mlxgo"
+	"github.com/moncho/mlxgo/deepseek/quant"
 	"github.com/moncho/mlxgo/lm"
 	"slices"
 	"sort"
 )
 
-// Model owns immutable float32 parameters. Separate sessions may run from
-// arbitrary goroutines. Close and native work are serialized on the MLX worker.
+// Model owns immutable parameters, with optional packed attention KV weights.
+// Separate sessions may run from arbitrary goroutines. Close and native work
+// are serialized on the MLX worker.
 type Model struct {
-	config  Config
-	weights map[string]mlx.Array
-	closed  bool
+	config         Config
+	weights        map[string]mlx.Array
+	fp8AttentionKV map[int]*quant.FP8Linear
+	closed         bool
 }
 
 // NewModel validates and retains independent handles for all parameters. Inputs
 // remain caller-owned. Extra/missing names, shapes and dtypes are rejected.
 func NewModel(c Config, parameters map[string]mlx.Array) (m *Model, err error) {
+	return NewModelWithOptions(c, parameters, ModelOptions{})
+}
+
+// FP8AttentionWeight contains E4M3FN row-major weights and E8M0 scales for
+// 32x32 blocks. The logical shape is [HeadDim, Dim] from the model config.
+// The constructor copies these bytes; callers must not mutate them during construction.
+type FP8AttentionWeight struct {
+	Data, Scales []byte
+}
+
+// ModelOptions selects experimental weight storage, independently of cache options.
+type ModelOptions struct {
+	// FP8AttentionKV replaces layers.<index>.attn.wkv.weight for selected layers.
+	// Omit those names from parameters; duplicate float32 weights are rejected.
+	// Only these projections use packed weight-only MXFP8; activations remain
+	// float32. HeadDim and Dim must be divisible by 32. CPU execution can be
+	// substantially slower. No automatic quantization or checkpoint loading occurs.
+	FP8AttentionKV map[int]FP8AttentionWeight
+}
+
+// NewModelWithOptions retains the float32 parameters and copies explicitly
+// supplied packed weights. Options are immutable after construction. An empty
+// options value is equivalent to NewModel; no float32 duplicates are retained.
+func NewModelWithOptions(c Config, parameters map[string]mlx.Array, options ModelOptions) (m *Model, err error) {
 	c = c.clone()
 	shapes, err := c.ParameterShapes()
 	if err != nil {
 		return nil, err
 	}
-	if len(parameters) != len(shapes) {
-		return nil, fmt.Errorf("deepseek: expected %d parameters, got %d", len(shapes), len(parameters))
+	replacements := make(map[string]int, len(options.FP8AttentionKV))
+	for layer := range options.FP8AttentionKV {
+		if layer < 0 || layer >= c.Layers {
+			return nil, fmt.Errorf("deepseek: FP8 attention layer %d outside model", layer)
+		}
+		name := fmt.Sprintf("layers.%d.attn.wkv.weight", layer)
+		if _, exists := parameters[name]; exists {
+			return nil, fmt.Errorf("deepseek: duplicate float32 and FP8 parameter %s", name)
+		}
+		replacements[name] = layer
 	}
-	m = &Model{config: c, weights: make(map[string]mlx.Array, len(shapes))}
+	if len(parameters)+len(replacements) != len(shapes) {
+		return nil, fmt.Errorf("deepseek: expected %d parameters, got %d float32 and %d FP8", len(shapes), len(parameters), len(replacements))
+	}
+	m = &Model{config: c, weights: make(map[string]mlx.Array, len(shapes)), fp8AttentionKV: make(map[int]*quant.FP8Linear, len(replacements))}
 	err = mlx.Batch(func() error {
 		s := &scope{}
 		keys := make([]string, 0, len(shapes))
@@ -36,6 +74,12 @@ func NewModel(c Config, parameters map[string]mlx.Array) (m *Model, err error) {
 		}
 		sort.Strings(keys)
 		for _, name := range keys {
+			if layer, ok := replacements[name]; ok {
+				if err := m.initFP8AttentionKV(layer, options.FP8AttentionKV[layer]); err != nil {
+					return err
+				}
+				continue
+			}
 			a, ok := parameters[name]
 			if !ok {
 				return fmt.Errorf("deepseek: missing parameter %s", name)
@@ -59,6 +103,19 @@ func NewModel(c Config, parameters map[string]mlx.Array) (m *Model, err error) {
 	return m, nil
 }
 
+// Called only while constructing an unpublished model on the MLX worker.
+func (m *Model) initFP8AttentionKV(layer int, weight FP8AttentionWeight) error {
+	p, err := quant.NewFP8Linear(weight.Data, weight.Scales, m.config.HeadDim, m.config.Dim, quant.FP8Block32)
+	if err != nil {
+		return fmt.Errorf("deepseek: FP8 attention layer %d: %w", layer, err)
+	}
+	if m.fp8AttentionKV == nil {
+		m.fp8AttentionKV = make(map[int]*quant.FP8Linear)
+	}
+	m.fp8AttentionKV[layer] = p
+	return nil
+}
+
 func (m *Model) Close() error {
 	if m == nil {
 		return nil
@@ -73,7 +130,14 @@ func (m *Model) Close() error {
 			arrays = append(arrays, a)
 		}
 		m.weights = nil
-		return mlx.CloseArrays(arrays)
+		err := mlx.CloseArrays(arrays)
+		for _, p := range m.fp8AttentionKV {
+			if e := p.Close(); err == nil {
+				err = e
+			}
+		}
+		m.fp8AttentionKV = nil
+		return err
 	})
 }
 
@@ -110,7 +174,8 @@ type Session struct {
 type SessionOptions struct {
 	// QuantizedCaches stores window KV as FP8 and compressed KV/index keys as
 	// packed FP4, and quantizes index queries before scoring. Activations and
-	// projections remain float32; reconstructed values are not BF16-rounded.
+	// reconstructed values remain float32 and are not BF16-rounded. Projection
+	// weight storage is controlled separately by ModelOptions.
 	// This is an experimental reference path, not quantized GEMM or BF16/CUDA
 	// numerical parity. It requires HeadDim and (when used) IndexDim divisible
 	// by 32. No tensor values round-trip through Go.

@@ -1,11 +1,46 @@
 # Bounded Quantization References
 
 `deepseek/quant` provides pure-Go CPU weight decoding and activation/cache
-quantization references, plus lazy MLX activation quantization graphs, for the
+quantization references, lazy MLX activation quantization graphs, and an
+experimental native packed FP8 projection for the
 [audited layouts](../CHECKPOINT_AUDIT.md).
-It does not load checkpoints, download weights or implement quantized GPU
-matrix multiplication. The released DeepSeek model is still unsupported by
+It does not load checkpoints or download weights. The released DeepSeek model is still unsupported by
 `inference.Open`.
+
+## Packed FP8 Projection
+
+`NewFP8Linear(data, scales, rows, cols, format)` uploads `FP8Block32` or
+`FP8Row32` checkpoint bytes without decoding a full float32 matrix. Dimensions
+must be positive multiples of 32. Block scales are repeated per row; weights
+are unchanged. `Forward` takes a Float32 `[tokens, cols]` array and returns a
+caller-owned `[tokens, rows]` array. Close the layer when finished.
+
+```go
+layer, err := quant.NewFP8Linear(data, scales, 512, 5120, quant.FP8Block32)
+if err != nil {
+    return err
+}
+defer layer.Close()
+y, err := layer.Forward(x)
+if err != nil {
+    return err
+}
+defer y.Close()
+```
+
+The underlying `mlx.MXFP8Matmul` accepts packed UInt32 weights and UInt8 E8M0
+scales. It uses MLX's native weight-only kernel, supports CPU/GPU and composes
+with `Batch` and `Compile`. It does **not** quantize activations, apply BF16
+checkpoint conversion. `deepseek.NewModelWithOptions` can explicitly install
+this adapter for selected attention KV projections; see
+[attention validation](../FP8_ATTENTION_VALIDATION.md).
+This is an experimental inference adapter; training is not validated.
+Native accumulation and underflow follow MLX, not bit-exact CPU decoding.
+
+The [real-weight validation and benchmark report](FP8_LINEAR_VALIDATION.md)
+includes reproduction commands. Packed payload is 3.88x smaller than float32.
+On the tested M3 Pro, small GPU batches are faster, but CPU execution is much
+slower. These results do not justify enabling it automatically.
 
 ## Activation and Cache Quantization
 

@@ -64,15 +64,15 @@ type attentionReference struct {
 	IndexCases []attentionIndexReference  `json:"index_cases"`
 }
 
-func readAttentionReference(t *testing.T) (string, attentionReference) {
+func readAttentionReference(t testing.TB) (string, attentionReference) {
 	return readAttentionLayerReference(t, 0)
 }
 
-func readAttentionLayerReference(t *testing.T, layer int) (string, attentionReference) {
+func readAttentionLayerReference(t testing.TB, layer int) (string, attentionReference) {
 	return readAttentionLayerReferenceMode(t, layer, false)
 }
 
-func readAttentionLayerReferenceMode(t *testing.T, layer int, packed bool) (string, attentionReference) {
+func readAttentionLayerReferenceMode(t testing.TB, layer int, packed bool) (string, attentionReference) {
 	t.Helper()
 	env := "MLXGO_DEEPSEEK_ATTENTION_DIR"
 	if layer == 2 {
@@ -259,7 +259,7 @@ func readSharedAttentionReferencesMode(t *testing.T, packed bool) (string, atten
 	return ownerDir, owner, dir, consumer
 }
 
-func loadAttentionTensor(t *testing.T, dir string, m attentionTensorReference) []float32 {
+func loadAttentionTensor(t testing.TB, dir string, m attentionTensorReference) []float32 {
 	t.Helper()
 	d, err := os.Open(filepath.Join(dir, m.Name+".bin"))
 	if err != nil {

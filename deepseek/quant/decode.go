@@ -1,6 +1,6 @@
 // Package quant provides bounded CPU reference weight decoding, host activation
-// quantization, and lazy MLX activation quantization graphs. It is not a
-// quantized matrix-multiplication kernel or a full-checkpoint loader.
+// quantization, lazy MLX activation quantization graphs, and an experimental
+// packed FP8 linear adapter to MLX's native kernel. It is not a full-checkpoint loader.
 // No tensor payloads are fetched here.
 package quant
 

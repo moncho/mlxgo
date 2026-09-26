@@ -50,7 +50,7 @@ jobs:
       - run: CGO_ENABLED=1 go run -tags mlx ./cmd/finetune-mlp
       - run: CGO_ENABLED=1 go run -tags mlx ./cmd/deepseek-smoke
       - run: CGO_ENABLED=1 go run -tags mlx ./cmd/deepseek-smoke -quantized-caches
-      - run: CGO_ENABLED=1 go test -race -tags "mlx mlxruntime" ./deepseek -run 'TestQuantizedSession'
+      - run: CGO_ENABLED=1 go test -race -tags "mlx mlxruntime" ./deepseek -run 'Test(QuantizedSession|FP8Model)'
       - run: CGO_ENABLED=1 go run -tags mlx ./cmd/deepseek-smoke -export "$RUNNER_TEMP/deepseek-synthetic"
       - run: CGO_ENABLED=1 go run -tags mlx ./cmd/generate -model "$RUNNER_TEMP/deepseek-synthetic" -tokens 1,5,2,9,4 -max-tokens 4
       - run: CGO_ENABLED=1 go run -tags mlx ./cmd/deepseek-smoke -fixture deepseek/testdata/model_engram.json -export "$RUNNER_TEMP/deepseek-engram"

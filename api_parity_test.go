@@ -14,11 +14,11 @@ import (
 )
 
 func TestStubAndNativeAPIsStayInSync(t *testing.T) {
-	native, err := exportedAPI("array_mlx.go", "closure_mlx.go", "fast_mlx.go", "sort_mlx.go")
+	native, err := exportedAPI("array_mlx.go", "closure_mlx.go", "fast_mlx.go", "sort_mlx.go", "quantized_mlx.go", "memory_mlx.go")
 	if err != nil {
 		t.Fatal(err)
 	}
-	stub, err := exportedAPI("array_stub.go", "closure_stub.go", "fast_stub.go", "sort_stub.go")
+	stub, err := exportedAPI("array_stub.go", "closure_stub.go", "fast_stub.go", "sort_stub.go", "quantized_stub.go", "memory_stub.go")
 	if err != nil {
 		t.Fatal(err)
 	}
