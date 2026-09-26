@@ -76,7 +76,7 @@ func testReducedModelReference(t *testing.T, f modelFixture) {
 						c.OriginalSeq = 4
 					}
 					m := modelFromFixture(t, c, f.Parameters)
-					s, err := m.NewSession()
+					s, err := m.NewSessionWithOptions(SessionOptions{QuantizedCaches: f.CacheMode != ""})
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -96,12 +96,18 @@ func testReducedModelReference(t *testing.T, f modelFixture) {
 					if s.Position() != len(f.Tokens) {
 						t.Fatal("session offset mismatch")
 					}
-					full, err := closeLogits(m.Forward(f.Tokens))
+					fullSession, err := m.NewSessionWithOptions(SessionOptions{QuantizedCaches: f.CacheMode != ""})
+					if err != nil {
+						t.Fatal(err)
+					}
+					full, err := closeLogits(fullSession.ForwardAll(f.Tokens))
+					fullSession.Close()
 					if err != nil {
 						t.Fatal(err)
 					}
 					compareLogits(t, data, full)
 					for i, cache := range s.layers {
+						checkCacheStorage(t, c, i, cache, f.CacheMode != "")
 						if cache.windowLen != c.Window {
 							t.Fatalf("layer %d window not bounded", i)
 						}
@@ -139,7 +145,7 @@ func testReducedSessionIsolation(t *testing.T, f modelFixture) {
 					if i%2 == 1 {
 						m, want = b, f.SecondLogits.Data
 					}
-					s, err := m.NewSession()
+					s, err := m.NewSessionWithOptions(SessionOptions{QuantizedCaches: f.CacheMode != ""})
 					if err != nil {
 						errs <- err
 						return
@@ -179,7 +185,7 @@ func testReducedSessionLifecycle(t *testing.T, f modelFixture) {
 		t.Fatal(err)
 	}
 	m := modelFromFixture(t, f.Config, f.Parameters)
-	s, err := m.NewSession()
+	s, err := m.NewSessionWithOptions(SessionOptions{QuantizedCaches: f.CacheMode != ""})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +223,7 @@ func testReducedSessionLifecycle(t *testing.T, f modelFixture) {
 		a.Close()
 		t.Fatal("used closed session")
 	}
-	other, err := m.NewSession()
+	other, err := m.NewSessionWithOptions(SessionOptions{QuantizedCaches: f.CacheMode != ""})
 	if err != nil {
 		t.Fatal(err)
 	}

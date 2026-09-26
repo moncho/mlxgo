@@ -24,3 +24,17 @@ func TestStubSort(t *testing.T) {
 		}
 	}
 }
+
+func TestStubQuantizationPrimitives(t *testing.T) {
+	for _, fn := range []func(Array, Array) (Array, error){BitwiseAnd, BitwiseOr, LeftShift, RightShift} {
+		if _, err := fn(Array{}, Array{}); err != errBuiltWithoutMLX {
+			t.Fatalf("got %v", err)
+		}
+	}
+	if _, err := View(Array{}, UInt32); err != errBuiltWithoutMLX {
+		t.Fatalf("got %v", err)
+	}
+	if _, err := MaxAxis(Array{}, 0, true); err != errBuiltWithoutMLX {
+		t.Fatalf("got %v", err)
+	}
+}

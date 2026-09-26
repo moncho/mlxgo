@@ -4,9 +4,11 @@ package deepseek
 
 import (
 	"fmt"
+	"os"
 	"testing"
 
 	mlx "github.com/moncho/mlxgo"
+	"github.com/moncho/mlxgo/deepseek/quant"
 )
 
 // This composes only attention sublayers. It deliberately does not simulate
@@ -66,7 +68,18 @@ func runSharedAttention(t *testing.T, session *Session, input []float32) (owner,
 }
 
 func TestReleasedSharedAttentionForward(t *testing.T) {
-	ownerDir, ownerRef, consumerDir, consumerRef := readSharedAttentionReferences(t)
+	testReleasedSharedAttentionMode(t, false)
+}
+
+func TestReleasedQuantizedSharedAttentionForward(t *testing.T) {
+	if os.Getenv("MLXGO_DEEPSEEK_QUANTIZED_CACHES") != "1" {
+		t.Skip("set MLXGO_DEEPSEEK_QUANTIZED_CACHES=1 with quantized-cache references")
+	}
+	testReleasedSharedAttentionMode(t, true)
+}
+
+func testReleasedSharedAttentionMode(t *testing.T, packed bool) {
+	ownerDir, ownerRef, consumerDir, consumerRef := readSharedAttentionReferencesMode(t, packed)
 	for _, device := range []struct {
 		name string
 		set  func() error
@@ -94,7 +107,7 @@ func TestReleasedSharedAttentionForward(t *testing.T) {
 				}
 			}
 			fresh := func(t *testing.T) *Session {
-				s, err := model.NewSession()
+				s, err := model.NewSessionWithOptions(SessionOptions{QuantizedCaches: packed})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -102,8 +115,8 @@ func TestReleasedSharedAttentionForward(t *testing.T) {
 				return s
 			}
 			fullOwner, fullConsumer := runSharedAttention(t, fresh(t), attentionInputs(0, 131, model.config.Dim))
-			compareAttention(t, "owner full", fullOwner, ownerRef.Full, 2e-4)
-			compareAttention(t, "consumer full", fullConsumer, consumerRef.Full, 2e-4)
+			compareCacheAttention(t, "owner full", fullOwner, ownerRef.Full, packed, false)
+			compareCacheAttention(t, "consumer full", fullConsumer, consumerRef.Full, packed, false)
 			checkSchedule := func(t *testing.T, i int) {
 				c, oc := consumerRef.Cases[i], ownerRef.Cases[i]
 				s, other := fresh(t), fresh(t)
@@ -114,10 +127,12 @@ func TestReleasedSharedAttentionForward(t *testing.T) {
 					owner, consumer = append(owner, a...), append(consumer, b...)
 					runSharedAttention(t, other, attentionInputs(19+pos-c.Prefill, 1, model.config.Dim))
 				}
-				compareAttention(t, "owner cached", owner, oc.Output, 2e-4)
-				compareAttention(t, "consumer cached", consumer, c.Output, 2e-4)
-				compareAttention(t, "owner cached/full", owner, fullOwner[:len(owner)], 2e-4)
-				compareAttention(t, "consumer cached/full", consumer, fullConsumer[:len(consumer)], 2e-4)
+				compareCacheAttention(t, "owner cached", owner, oc.Output, packed, false)
+				compareCacheAttention(t, "consumer cached", consumer, c.Output, packed, false)
+				if !packed {
+					compareAttention(t, "owner cached/full", owner, fullOwner[:len(owner)], 2e-4)
+					compareAttention(t, "consumer cached/full", consumer, fullConsumer[:len(consumer)], 2e-4)
+				}
 				for _, values := range [][]float32{owner, consumer} {
 					for _, v := range values[:model.config.Dim] {
 						if v != 0 {
@@ -130,22 +145,39 @@ func TestReleasedSharedAttentionForward(t *testing.T) {
 					t.Fatal("incorrect shared cache lengths/position")
 				}
 				for _, part := range []struct {
-					name  string
-					array mlx.Array
-					want  []float32
+					name   string
+					array  mlx.Array
+					scales mlx.Array
+					format quant.ActivationFormat
+					want   []float32
 				}{
-					{"owner window", s.layers[2].window, oc.Cache}, {"consumer window", s.layers[3].window, c.Cache},
-					{"owner compressed", s.layers[2].compressed, oc.Compressed}, {"owner keys", s.layers[2].keys, oc.Keys}, {"owner pending", s.layers[2].pending, oc.Pending},
+					{"owner window", s.layers[2].window, s.layers[2].windowScale, quant.FP8Activation32, oc.Cache}, {"consumer window", s.layers[3].window, s.layers[3].windowScale, quant.FP8Activation32, c.Cache},
+					{"owner compressed", s.layers[2].compressed, s.layers[2].compressedScale, quant.FP4Cache16, oc.Compressed}, {"owner keys", s.layers[2].keys, s.layers[2].keyScale, quant.FP4Index32, oc.Keys}, {"owner pending", s.layers[2].pending, mlx.Array{}, quant.FP8Activation32, oc.Pending},
 				} {
 					if len(part.want) == 0 {
 						continue
 					}
-					data, err := part.array.Float32Data()
+					value, err := one(func(sc *scope) mlx.Array {
+						if part.name == "owner pending" {
+							return part.array
+						}
+						return s.readAttentionCache(sc, part.array, part.scales, part.format)
+					})
 					if err != nil {
 						t.Fatal(err)
 					}
-					compareAttention(t, part.name, data, part.want, 5e-5)
+					data, err := value.Float32Data()
+					value.Close()
+					if err != nil {
+						t.Fatal(err)
+					}
+					// The consumer receives already-different quantized owner outputs,
+					// not identical projection inputs. Its cache is a propagated
+					// numerical result; the sparse-bin limit applies only upstream.
+					compareCacheAttention(t, part.name, data, part.want, packed && part.name != "owner pending", !packed || part.name != "consumer window")
 				}
+				checkCacheStorage(t, model.config, 2, s.layers[2], packed)
+				checkCacheStorage(t, model.config, 3, s.layers[3], packed)
 			}
 			for i, c := range consumerRef.Cases {
 				t.Run(fmt.Sprintf("prefill_%d", c.Prefill), func(t *testing.T) { checkSchedule(t, i) })

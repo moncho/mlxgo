@@ -78,13 +78,14 @@ func (m *Model) Close() error {
 }
 
 type layerCache struct {
-	window, pending, compressed, keys    mlx.Array
-	windowLen, pendingLen, compressedLen int
+	window, pending, compressed, keys      mlx.Array
+	windowScale, compressedScale, keyScale mlx.Array
+	windowLen, pendingLen, compressedLen   int
 }
 
 func (c *layerCache) arrays() []mlx.Array {
 	var out []mlx.Array
-	for _, a := range []mlx.Array{c.window, c.pending, c.compressed, c.keys} {
+	for _, a := range []mlx.Array{c.window, c.pending, c.compressed, c.keys, c.windowScale, c.compressedScale, c.keyScale} {
 		if len(a.Shape()) > 0 {
 			out = append(out, a)
 		}
@@ -102,16 +103,42 @@ type Session struct {
 	offset          int
 	invalid, closed bool
 	engram          *EngramHasher
+	options         SessionOptions
+}
+
+// SessionOptions controls per-sequence inference behavior, not checkpoint format.
+type SessionOptions struct {
+	// QuantizedCaches stores window KV as FP8 and compressed KV/index keys as
+	// packed FP4, and quantizes index queries before scoring. Activations and
+	// projections remain float32; reconstructed values are not BF16-rounded.
+	// This is an experimental reference path, not quantized GEMM or BF16/CUDA
+	// numerical parity. It requires HeadDim and (when used) IndexDim divisible
+	// by 32. No tensor values round-trip through Go.
+	QuantizedCaches bool
 }
 
 var _ lm.Session = (*Session)(nil)
 
 func (m *Model) NewSession() (session *Session, err error) {
+	return m.NewSessionWithOptions(SessionOptions{})
+}
+
+// NewSessionWithOptions creates a sequence with immutable cache options.
+// NewSession retains the existing float32-cache behavior.
+func (m *Model) NewSessionWithOptions(options SessionOptions) (session *Session, err error) {
 	err = mlx.Batch(func() error {
 		if m == nil || m.closed {
 			return fmt.Errorf("deepseek: closed model")
 		}
-		session = &Session{model: m, layers: make([]layerCache, m.config.Layers)}
+		if options.QuantizedCaches {
+			if m.config.HeadDim <= 0 || m.config.HeadDim%32 != 0 {
+				return fmt.Errorf("deepseek: quantized caches require head_dim divisible by 32")
+			}
+			if len(m.config.KVSources) > 0 && (m.config.IndexDim <= 0 || m.config.IndexDim%32 != 0) {
+				return fmt.Errorf("deepseek: quantized caches require index_head_dim divisible by 32")
+			}
+		}
+		session = &Session{model: m, layers: make([]layerCache, m.config.Layers), options: options}
 		if m.config.Engram != nil {
 			// Model config is already validated and immutable; share metadata, not history.
 			session.engram = &EngramHasher{config: *m.config.Engram}

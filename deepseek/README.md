@@ -25,6 +25,14 @@ not support for loading or generating with the complete released checkpoint.
 The [real layer-2/3 sharing validation](SHARED_ATTENTION_VALIDATION.md) checks
 the producer/consumer pair in one lazy graph, including interleaved and
 concurrent sessions. No residual, mHC or FFN block wiring is implied by this pair.
+The [activation/cache quantization reference](quant/ACTIVATION_VALIDATION.md)
+checks three host-side encodings against independent CPU formulas, including
+samples derived from real weights. Matching lazy MLX quantize/dequantize graphs
+now produce packed device arrays on CPU and GPU, including compiled execution.
+They are inference-only reference operations. An explicit session option now
+integrates packed caches and index-query quantization into attention, with
+[synthetic and real-weight validation](QUANTIZED_CACHE_VALIDATION.md).
+Quantized matrix multiplication remains unsupported.
 Reproduce the report offline:
 
 ```sh
@@ -42,6 +50,7 @@ downloaded by the tests. The source license is in `THIRD_PARTY_LICENSE`.
 go run -tags mlx ./cmd/deepseek-smoke -device cpu
 go run -tags mlx ./cmd/deepseek-smoke -device gpu
 go run -tags mlx ./cmd/deepseek-smoke -device gpu -fixture deepseek/testdata/model_engram.json
+go run -tags mlx ./cmd/deepseek-smoke -device gpu -quantized-caches
 ```
 
 The example uses checked-in deterministic synthetic weights: 8 layers, 16,488
@@ -50,6 +59,11 @@ token IDs, not text. No model download or Python environment is required.
 The Engram-enabled fixture has 20,709 parameters and inserts memory contributions
 at layers 0, 3 and 6. It is a separate untrained model, not a conversion of the
 released weights.
+
+`-quantized-caches` selects a separate 26,952-parameter synthetic fixture with
+32-wide attention/index heads. It uses packed FP8/FP4 caches and index queries,
+but keeps float32 weights and projections. It is still untrained and produces
+token IDs, not pretrained text. An explicit `-fixture` overrides fixture selection.
 
 To save these synthetic weights as a local bundle, pass
 `-export models/deepseek-synthetic` (the directory must not already exist).
@@ -68,6 +82,27 @@ parameter contract. `Model.Forward` computes all logits in a temporary session.
 `Model.NewSession` creates independent incremental state. The model is immutable
 and may be used by separate sessions concurrently; do not share a session across
 goroutines. Sessions borrow the model, which must remain open until they finish.
+
+To opt into the experimental packed-cache path:
+
+```go
+session, err := model.NewSessionWithOptions(deepseek.SessionOptions{
+    QuantizedCaches: true,
+})
+```
+
+`NewSession` and `Model.Forward` remain float32-cache defaults. The option is
+per session, copied at creation, and not serialized into exported weight bundles
+or enabled by the common loader. Attention head width must be divisible by 32;
+index head width must also be divisible by 32 when compressed attention is used.
+Window KV uses FP8/E8M0, compressed KV uses FP4/E4M3, and index keys/queries use
+FP4/E8M0. Pending compressor inputs remain float32. Reconstructed values are
+float32, without implicit BF16 rounding. Old cache rows are never requantized.
+
+This reduces completed-cache payload sizes, not necessarily peak memory or
+latency: attention reconstructs full-width temporaries and still uses float32
+matmul. Real-weight results are numerically bounded, not bitwise upstream parity;
+see the [precision limits and measurements](QUANTIZED_CACHE_VALIDATION.md).
 
 Both DeepSeek and `qwen2.NewSession` implement `lm.Session`: `Step`, `Position`
 and `Close`. The same `lm.Greedy` decoder works with either architecture. Input
@@ -190,7 +225,7 @@ reference code introduce these requirements beyond memory capacity:
 | Single-pass mHC | Complete block wiring implemented and compared through model logits |
 | Engram | Float32 remapping/hash/lookup/gating implemented; released tokenizer metadata, FP8 table loading and rounding remain |
 | Checkpoint storage | Indexed I/O, released text mapping and bounded CPU FP8/FP4 decoding/BF16 rounding tested; released checkpoint integration and efficient quantized execution remain unsupported |
-| Cache quantization | Separate formats for sliding-window KV, compressed KV and index keys; disabling weight quantization alone does not disable these |
+| Cache quantization | Opt-in packed sliding-window KV, compressed KV and index keys, plus quantized index queries; float32 projection math, no optimized quantized GEMM |
 | Text input/output | Official encoding rules and tokenizer integration; no assumption that the existing Qwen chat formatting applies |
 | Vision | DeepSeek-ViT, image processing, projection and vision-specific routing bias |
 | DSpark | Draft path and its state; the released minimal reference itself does not supply a speculative generation loop |

@@ -1,6 +1,7 @@
-// Package quant decodes the audited DeepSeek weight storage into bounded,
-// caller-owned float32 buffers. It is a CPU reference decoder, not a quantized
-// MLX kernel or a full-checkpoint loader. No tensor payloads are fetched here.
+// Package quant provides bounded CPU reference weight decoding, host activation
+// quantization, and lazy MLX activation quantization graphs. It is not a
+// quantized matrix-multiplication kernel or a full-checkpoint loader.
+// No tensor payloads are fetched here.
 package quant
 
 import (

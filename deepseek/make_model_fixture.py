@@ -2,7 +2,8 @@
 
 Architectural forward methods, index selection and block wiring are unchanged.
 One cache-publication correction is explicitly recorded below. Replacements:
-float32 Linear, no-op cache quantization,
+float32 Linear, no-op cache quantization (or independent CPU formulas with
+--quantized-caches),
 CPU mathematical kernels from reference.py, all-position head output, and
 disabled vision/DSpark and optional float32 Engram with prepared synthetic
 tokenizer metadata. This is NOT released-checkpoint parity.
@@ -13,7 +14,9 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import lru_cache, partial
 import json
+import gzip
 import math
+import sys
 from pathlib import Path
 from typing import Literal
 
@@ -27,7 +30,15 @@ from reference import HASHES, REVISION, load_sources, sinkhorn, sparse_attention
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--source-dir", type=Path)
 parser.add_argument("--engram", action="store_true", help="Enable prepared float32 Engram in a separate fixture")
+parser.add_argument("--quantized-caches", action="store_true", help="enable CPU cache/index-query quantizers with float32 projections")
+parser.add_argument("--out", type=Path, help="output fixture; must not already exist")
 args = parser.parse_args()
+if args.quantized_caches and args.engram:
+    parser.error("quantized cache fixture does not include Engram")
+if args.quantized_caches and (torch.__version__.split("+", 1)[0] != "2.14.0" or sys.byteorder != "little"):
+    raise RuntimeError("Use torch==2.14.0 on a little-endian host")
+if args.out and args.out.exists():
+    raise FileExistsError(args.out)
 sources = load_sources(args.source_dir, engram=args.engram)
 
 
@@ -54,6 +65,9 @@ namespace = dict(torch=torch, nn=nn, F=F, dist=dist, math=math,
                  fp4_act_quant=lambda *a, **k: None,
                  hc_split_sinkhorn=sinkhorn, sparse_attn=sparse_attention,
                  EngramLayout=NoEngram)
+if args.quantized_caches:
+    from quant.make_activation_fixture import inplace_cache_quantizers
+    namespace["act_quant"], namespace["fp4_act_quant"] = inplace_cache_quantizers(sources["kernel.py"])
 if args.engram:
     from engram_reference import prepare
     from reference import ENGRAM_HASHES
@@ -85,6 +99,8 @@ config = dict(format="mlxgo.deepseek.float32.v1", vocab_size=32, dim=8,
               index_n_heads=2, index_head_dim=8, index_topk=2,
               candidate_source_layer=4, candidate_topk_blocks=2, candidate_block_size=2,
               hyper=dict(Streams=3, Iterations=20, NormEpsilon=1e-20, Epsilon=1e-6))
+if args.quantized_caches:
+    config.update(head_dim=32, index_head_dim=32)
 if args.engram:
     config["engram"] = engram_config
 overrides = {k: v for k, v in config.items() if k not in ("format", "router", "hyper", "engram")}
@@ -183,7 +199,16 @@ if args.engram:
     result["limitations"][-1] = "Float32 Engram table, prepared synthetic token map; vision, DSpark and pretrained tokenization disabled"
     import numpy, sympy, tokenizers
     result["engram_metadata_versions"] = dict(numpy=numpy.__version__, sympy=sympy.__version__, tokenizers=tokenizers.__version__)
-destination = Path(__file__).parent / "testdata" / ("model_engram.json" if args.engram else "model.json")
-destination.write_text(json.dumps(result, separators=(",", ":")) + "\n")
+if args.quantized_caches:
+    result["cache_quantization"] = "fp8_fp4_float32_v1"
+    result["limitations"][1] = "Cache/index-query CPU quantization enabled; float32 activations and projections, not BF16/CUDA parity"
+filename = "model_quantized.json.gz" if args.quantized_caches else ("model_engram.json" if args.engram else "model.json")
+destination = args.out or Path(__file__).parent / "testdata" / filename
+payload = (json.dumps(result, separators=(",", ":"), allow_nan=False) + "\n").encode()
+if args.quantized_caches or args.out:
+    with destination.open("xb") as f:
+        f.write(gzip.compress(payload, mtime=0) if destination.suffix == ".gz" else payload)
+else:
+    destination.write_bytes(payload)
 print(f"Wrote {len(state)} parameters, {len(cases)} decode schedules; {sum(v.numel() for v in state.values())} scalar parameters")
 print("Maximum reference chunk error:", max(case["reference_chunk_error"] for case in cases))

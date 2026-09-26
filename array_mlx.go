@@ -321,6 +321,53 @@ func AsType(a Array, dtype DType) (Array, error) {
 	})
 }
 
+// View reinterprets an array's bits as dtype without numeric conversion.
+// MLX adjusts the last dimension when the element widths differ.
+func View(a Array, dtype DType) (Array, error) {
+	cdtype, err := cDType(dtype)
+	if err != nil {
+		return Array{}, err
+	}
+	return unaryOp(a, "mlx_view", func(out *C.mlx_array, input C.mlx_array, stream C.mlx_stream) C.int {
+		return C.mlx_view(out, input, cdtype, stream)
+	})
+}
+
+// BitwiseAnd returns the elementwise bitwise AND of integer arrays.
+func BitwiseAnd(a, b Array) (Array, error) {
+	return binaryOp(a, b, "mlx_bitwise_and", func(out *C.mlx_array, left, right C.mlx_array, stream C.mlx_stream) C.int {
+		return C.mlx_bitwise_and(out, left, right, stream)
+	})
+}
+
+// BitwiseOr returns the elementwise bitwise OR of integer arrays.
+func BitwiseOr(a, b Array) (Array, error) {
+	return binaryOp(a, b, "mlx_bitwise_or", func(out *C.mlx_array, left, right C.mlx_array, stream C.mlx_stream) C.int {
+		return C.mlx_bitwise_or(out, left, right, stream)
+	})
+}
+
+// LeftShift shifts integer elements of a left by the corresponding counts in b.
+func LeftShift(a, b Array) (Array, error) {
+	return binaryOp(a, b, "mlx_left_shift", func(out *C.mlx_array, left, right C.mlx_array, stream C.mlx_stream) C.int {
+		return C.mlx_left_shift(out, left, right, stream)
+	})
+}
+
+// RightShift shifts integer elements of a right by the corresponding counts in b.
+func RightShift(a, b Array) (Array, error) {
+	return binaryOp(a, b, "mlx_right_shift", func(out *C.mlx_array, left, right C.mlx_array, stream C.mlx_stream) C.int {
+		return C.mlx_right_shift(out, left, right, stream)
+	})
+}
+
+// MaxAxis returns maximum values along one axis.
+func MaxAxis(a Array, axis int, keepdims bool) (Array, error) {
+	return unaryOp(a, "mlx_max_axis", func(out *C.mlx_array, input C.mlx_array, stream C.mlx_stream) C.int {
+		return C.mlx_max_axis(out, input, C.int(axis), C.bool(keepdims), stream)
+	})
+}
+
 // Reshape returns an array view with shape. A single -1 dimension is allowed.
 func Reshape(a Array, shape []int) (Array, error) {
 	cshape, err := cReshapeShape(shape)

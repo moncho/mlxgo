@@ -1,21 +1,30 @@
 package main
 
 import (
+	"compress/gzip"
 	"encoding/json"
 	"flag"
 	"fmt"
 	mlx "github.com/moncho/mlxgo"
 	"github.com/moncho/mlxgo/deepseek"
 	"github.com/moncho/mlxgo/lm"
+	"io"
 	"os"
 	"path/filepath"
 )
 
 func run() error {
-	path := flag.String("fixture", "deepseek/testdata/model.json", "untrained reduced-model fixture")
+	path := flag.String("fixture", "", "untrained fixture (defaults to the matching float32 or quantized-cache fixture)")
+	quantized := flag.Bool("quantized-caches", false, "experimental FP8/FP4 caches with float32 weights")
 	device := flag.String("device", "gpu", "cpu or gpu")
 	export := flag.String("export", "", "export synthetic bundle to a new directory")
 	flag.Parse()
+	if *path == "" {
+		*path = "deepseek/testdata/model.json"
+		if *quantized {
+			*path = "deepseek/testdata/model_quantized.json.gz"
+		}
+	}
 	switch *device {
 	case "cpu":
 		if err := mlx.SetDefaultCPU(); err != nil {
@@ -37,12 +46,27 @@ func run() error {
 		} `json:"parameters"`
 		Tokens []int32 `json:"tokens"`
 	}
-	data, err := os.ReadFile(*path)
+	file, err := os.Open(*path)
 	if err != nil {
 		return err
 	}
-	if err = json.Unmarshal(data, &f); err != nil {
+	defer file.Close()
+	var reader io.Reader = file
+	if filepath.Ext(*path) == ".gz" {
+		z, err := gzip.NewReader(file)
+		if err != nil {
+			return err
+		}
+		defer z.Close()
+		reader = z
+	}
+	decoder := json.NewDecoder(io.LimitReader(reader, 32<<20))
+	if err = decoder.Decode(&f); err != nil {
 		return err
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return fmt.Errorf("trailing fixture data: %v", err)
 	}
 	if f.Revision != deepseek.ReferenceRevision || len(f.Tokens) < 5 {
 		return fmt.Errorf("incompatible reduced fixture")
@@ -81,7 +105,7 @@ func run() error {
 		}
 		fmt.Printf("Exported synthetic bundle: %s\n", *export)
 	}
-	session, err := model.NewSession()
+	session, err := model.NewSessionWithOptions(deepseek.SessionOptions{QuantizedCaches: *quantized})
 	if err != nil {
 		return err
 	}
@@ -91,6 +115,9 @@ func run() error {
 		return err
 	}
 	fmt.Printf("Untrained float32 DeepSeek text backbone (%d layers, %s)\n", f.Config.Layers, *device)
+	if *quantized {
+		fmt.Println("Experimental FP8/FP4 caches and index queries; float32 projections.")
+	}
 	if f.Config.Engram != nil {
 		fmt.Printf("Engram enabled on layers %v (prepared synthetic token map)\n", f.Config.Engram.Layers)
 	}

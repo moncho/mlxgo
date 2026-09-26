@@ -26,6 +26,9 @@ type modelFixture struct {
 	Cases          []modelCase              `json:"cases"`
 	UnpatchedError float64                  `json:"unpatched_reference_chunk_error"`
 	Adjustments    []string                 `json:"reference_adjustments"`
+	CacheMode      string                   `json:"cache_quantization"`
+	SHA256         map[string]string        `json:"sha256"`
+	Torch          string                   `json:"torch"`
 }
 
 func readModelFixture(t *testing.T) modelFixture {

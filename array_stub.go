@@ -120,6 +120,13 @@ func ArangeDType(_, _, _ float64, _ DType) (Array, error) {
 	return Array{}, errBuiltWithoutMLX
 }
 
+func View(_ Array, _ DType) (Array, error)          { return Array{}, errBuiltWithoutMLX }
+func BitwiseAnd(_, _ Array) (Array, error)          { return Array{}, errBuiltWithoutMLX }
+func BitwiseOr(_, _ Array) (Array, error)           { return Array{}, errBuiltWithoutMLX }
+func LeftShift(_, _ Array) (Array, error)           { return Array{}, errBuiltWithoutMLX }
+func RightShift(_, _ Array) (Array, error)          { return Array{}, errBuiltWithoutMLX }
+func MaxAxis(_ Array, _ int, _ bool) (Array, error) { return Array{}, errBuiltWithoutMLX }
+
 func AsType(_ Array, _ DType) (Array, error) {
 	return Array{}, errBuiltWithoutMLX
 }

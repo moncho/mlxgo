@@ -1,7 +1,8 @@
 """Real attention oracle: layers 0/2 alone or layer 2 with its layer-3 consumer.
 
-Activation/KV quantizers are disabled explicitly. This validates sliding-window
-and compressed attention mathematics and caches, not released quantized inference.
+Cache/index-query quantizers are disabled by default, or replaced by independent
+CPU formulas with --quantized-caches. Projections remain float32 in both modes;
+this is not released BF16/CUDA inference parity.
 """
 
 import argparse
@@ -22,6 +23,7 @@ import torch.nn.functional as F
 
 from quant.make_sample_reference import HEADER_SHA, SHARD, decoded_hash, sha
 from reference import HASHES, REVISION, sparse_attention
+from quant.make_activation_fixture import inplace_cache_quantizers
 
 ROOT = Path(__file__).resolve().parent
 CONFIG_SHA = "8be45ce0476004a3f529fd896115a4a2e800a129ad2d3ec05b16050f52e21879"
@@ -29,6 +31,27 @@ PREFILLS = [1, 127, 128, 129]
 TOKENS = 131
 COMPRESSED_SHARD = "model-00005-of-00048.safetensors"
 COMPRESSED_HEADER_SHA = "f921056a11b2bee72e36ea301b533dd4d67cc8ae6fcc4c24f642516a2e3c4f31"
+CACHE_MODE = "fp8_fp4_float32_v1"
+
+
+def attention_namespace(source, kernel_source=None):
+    if sha(source) != HASHES["model.py"]:
+        raise ValueError("model source checksum mismatch")
+    names = {"RMSNorm", "precompute_freqs_cis", "apply_rotary_emb", "get_window_topk_idxs",
+             "Attention", "Compressor", "Indexer", "SharedAttentionRuntime", "select_candidate_blocks"}
+    nodes = [n for n in ast.parse(source).body if isinstance(n, (ast.ClassDef, ast.FunctionDef)) and n.name in names]
+    if {n.name for n in nodes} != names:
+        raise ValueError("incomplete reference source")
+    ns = dict(torch=torch, nn=nn, F=F, math=math, lru_cache=lru_cache, world_size=1,
+              Linear=FloatLinear, ColumnParallelLinear=FloatLinear, RowParallelLinear=FloatLinear,
+              fp8_block_size=32, fp4_block_size=32, scale_fmt="ue8m0", scale_dtype=torch.float32,
+              act_quant=lambda *a, **kw: None, fp4_act_quant=lambda *a, **kw: None,
+              sparse_attn=sparse_attention)
+    if kernel_source is not None:
+        ns["act_quant"], ns["fp4_act_quant"] = inplace_cache_quantizers(kernel_source)
+    future = ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")], level=0)
+    exec(compile(ast.fix_missing_locations(ast.Module(body=[future]+nodes, type_ignores=[])), "pinned-attention.py", "exec"), ns)
+    return ns
 
 
 def inputs(start, count, dim):
@@ -111,10 +134,15 @@ def main():
     parser.add_argument("--out", type=Path)
     parser.add_argument("--layer", type=int, choices=(0, 2), default=0)
     parser.add_argument("--consumer-samples", type=Path, help="layer-3 samples; validate the layer-2/3 attention pair")
+    parser.add_argument("--quantized-caches", action="store_true", help="enable CPU cache/index-query quantizers; keep float32 projections")
+    parser.add_argument("--kernel-source", type=Path, help="pinned kernel.py, required with --quantized-caches")
     args = parser.parse_args()
     if args.consumer_samples and args.layer != 2:
         parser.error("--consumer-samples requires --layer 2")
-    out = args.out or (args.consumer_samples or args.samples) / "attention-reference.json.gz"
+    if args.quantized_caches != bool(args.kernel_source):
+        parser.error("--quantized-caches and --kernel-source must be used together")
+    filename = "quantized-cache-reference.json.gz" if args.quantized_caches else "attention-reference.json.gz"
+    out = args.out or (args.consumer_samples or args.samples) / filename
     if out.exists():
         raise FileExistsError(out)
     if torch.__version__.split("+", 1)[0] != "2.14.0" or sys.byteorder != "little":
@@ -128,17 +156,12 @@ def main():
             source = response.read(1 << 20)
     if sha(source) != HASHES["model.py"]:
         raise ValueError("model source checksum mismatch")
-    names = {"RMSNorm", "precompute_freqs_cis", "apply_rotary_emb", "get_window_topk_idxs", "Attention"}
-    if args.layer == 2:
-        names.update({"Compressor", "Indexer", "SharedAttentionRuntime"})
-    nodes = [n for n in ast.parse(source).body if isinstance(n, (ast.ClassDef, ast.FunctionDef)) and n.name in names]
-    ns = dict(torch=torch, nn=nn, F=F, math=math, lru_cache=lru_cache, world_size=1,
-              Linear=FloatLinear, ColumnParallelLinear=FloatLinear, RowParallelLinear=FloatLinear,
-              fp8_block_size=32, fp4_block_size=32, scale_fmt="ue8m0", scale_dtype=torch.float32,
-              act_quant=lambda *a, **kw: None, fp4_act_quant=lambda *a, **kw: None,
-              sparse_attn=sparse_attention)
-    future = ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")], level=0)
-    exec(compile(ast.fix_missing_locations(ast.Module(body=[future]+nodes, type_ignores=[])), "pinned-attention.py", "exec"), ns)
+    ns = attention_namespace(source, args.kernel_source.read_bytes() if args.kernel_source else None)
+
+    def save(report):
+        if args.quantized_caches:
+            report.update(cache_quantization=CACHE_MODE, kernel_sha256=HASHES["kernel.py"])
+        write_report(out, report)
 
     snapshot = json.loads(gzip.decompress((ROOT / "testdata" / "released-checkpoint.metadata.json.gz").read_bytes()))
     shard, header_sha = (SHARD, HEADER_SHA) if args.layer == 0 else (COMPRESSED_SHARD, COMPRESSED_HEADER_SHA)
@@ -178,7 +201,7 @@ def main():
     metadata, manifest_sha = load_weights(model, input_norm, args.samples, prefix, args.layer, shard, header_sha)
     if args.consumer_samples:
         report = shared_reference(ns, model, input_norm, settings, snapshot, args.consumer_samples, manifest_sha)
-        write_report(out, report)
+        save(report)
         return
 
     x = inputs(0, TOKENS, settings["dim"])
@@ -220,6 +243,7 @@ def main():
             latent = model.compressor(long_x, 0)
             keys = model.indexer.k_norm(model.indexer.wk(latent))
             ns["apply_rotary_emb"](keys[..., -settings["rope_head_dim"]:], model.freqs_cis[:1280:2])
+            ns["fp4_act_quant"](keys, 32, True)
             model.indexer.k_cache[:, :640] = keys
             ns["shared_attn"].index_k = model.indexer.k_cache
             probes = []
@@ -229,7 +253,7 @@ def main():
                 ids = model.indexer(query_x, qr, None, pos, 0)
                 probes.append(dict(position=pos, indices=ids.flatten().tolist()))
             report.update(layer=2, index_keys=flat(keys), index_cases=probes)
-    write_report(out, report)
+    save(report)
 
 
 def shared_reference(ns, owner, owner_norm, settings, snapshot, samples, owner_manifest_sha):
@@ -288,7 +312,7 @@ def write_report(out, report):
     payload = (json.dumps(report, separators=(",", ":"), allow_nan=False)+"\n").encode()
     with out.open("xb") as f:
         f.write(gzip.compress(payload, mtime=0))
-    print(f"Saved {out}; activation/KV quantization disabled")
+    print(f"Saved {out}; cache quantization: {report.get('cache_quantization', 'disabled')}")
 
 
 if __name__ == "__main__":

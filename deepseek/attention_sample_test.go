@@ -41,6 +41,8 @@ type attentionIndexReference struct {
 }
 
 type attentionReference struct {
+	CacheMode        string `json:"cache_quantization"`
+	KernelSHA        string `json:"kernel_sha256"`
 	Schema           int    `json:"schema"`
 	Revision         string `json:"revision"`
 	ModelSHA         string `json:"model_sha256"`
@@ -67,6 +69,10 @@ func readAttentionReference(t *testing.T) (string, attentionReference) {
 }
 
 func readAttentionLayerReference(t *testing.T, layer int) (string, attentionReference) {
+	return readAttentionLayerReferenceMode(t, layer, false)
+}
+
+func readAttentionLayerReferenceMode(t *testing.T, layer int, packed bool) (string, attentionReference) {
 	t.Helper()
 	env := "MLXGO_DEEPSEEK_ATTENTION_DIR"
 	if layer == 2 {
@@ -78,7 +84,11 @@ func readAttentionLayerReference(t *testing.T, layer int) (string, attentionRefe
 	if dir == "" {
 		t.Skip("set " + env + " to an absolute attention sample directory")
 	}
-	f, err := os.Open(filepath.Join(dir, "attention-reference.json.gz"))
+	filename := "attention-reference.json.gz"
+	if packed {
+		filename = "quantized-cache-reference.json.gz"
+	}
+	f, err := os.Open(filepath.Join(dir, filename))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,6 +102,13 @@ func readAttentionLayerReference(t *testing.T, layer int) (string, attentionRefe
 	var r attentionReference
 	if err := d.Decode(&r); err != nil {
 		t.Fatal(err)
+	}
+	if packed {
+		if r.CacheMode != "fp8_fp4_float32_v1" || r.KernelSHA != "1236c3507019ed176f5dba5e04bcea58867cf654818c6cf138ed4845398c2455" {
+			t.Fatal("quantized cache reference provenance mismatch")
+		}
+	} else if r.CacheMode != "" || r.KernelSHA != "" {
+		t.Fatal("quantized oracle substituted for float32 oracle")
 	}
 	var extra any
 	if err := d.Decode(&extra); err != io.EOF {
@@ -226,12 +243,16 @@ func readAttentionLayerReference(t *testing.T, layer int) (string, attentionRefe
 }
 
 func readSharedAttentionReferences(t *testing.T) (string, attentionReference, string, attentionReference) {
+	return readSharedAttentionReferencesMode(t, false)
+}
+
+func readSharedAttentionReferencesMode(t *testing.T, packed bool) (string, attentionReference, string, attentionReference) {
 	t.Helper()
-	dir, consumer := readAttentionLayerReference(t, 3)
+	dir, consumer := readAttentionLayerReferenceMode(t, 3, packed)
 	if os.Getenv("MLXGO_DEEPSEEK_COMPRESSED_ATTENTION_DIR") == "" {
 		t.Fatal("shared attention requires MLXGO_DEEPSEEK_COMPRESSED_ATTENTION_DIR")
 	}
-	ownerDir, owner := readAttentionLayerReference(t, 2)
+	ownerDir, owner := readAttentionLayerReferenceMode(t, 2, packed)
 	if consumer.OwnerManifestSHA != owner.ManifestSHA || consumer.Wiring != "norm3(attention2(norm2(x)))" {
 		t.Fatal("shared attention owner provenance/wiring mismatch")
 	}

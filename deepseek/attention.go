@@ -3,6 +3,7 @@ package deepseek
 import (
 	"fmt"
 	mlx "github.com/moncho/mlxgo"
+	"github.com/moncho/mlxgo/deepseek/quant"
 	"math"
 	"slices"
 )
@@ -28,13 +29,23 @@ func (session *Session) attention(s *scope, x mlx.Array, layer int, shared *atte
 	q = rotary(s, q, c, r, start, 1, false)
 	kv := s.add(mlx.RMSNorm(s.linear(x, w[p+"wkv.weight"]), w[p+"kv_norm.weight"], c.Hyper.NormEpsilon))
 	kv = rotary(s, kv, c, r, start, 1, false)
+	var windowScale mlx.Array
+	if session.options.QuantizedCaches {
+		kv, windowScale = packCache(s, kv, quant.FP8Activation32)
+	}
 	windowLen := n
 	if start > 0 {
 		kv = s.add(mlx.ConcatenateAxis([]mlx.Array{cache.window, kv}, 1))
+		if session.options.QuantizedCaches {
+			windowScale = s.add(mlx.ConcatenateAxis([]mlx.Array{cache.windowScale, windowScale}, 1))
+		}
 		windowLen = cache.windowLen + n
 	}
 	if start > 0 && windowLen > c.Window {
 		kv = s.span(kv, 1, windowLen-c.Window, windowLen)
+		if session.options.QuantizedCaches {
+			windowScale = s.span(windowScale, 1, windowLen-c.Window, windowLen)
+		}
 		windowLen = c.Window
 	}
 	window := kv
@@ -42,6 +53,14 @@ func (session *Session) attention(s *scope, x mlx.Array, layer int, shared *atte
 		window = s.span(kv, 1, windowLen-c.Window, windowLen)
 	}
 	retain(s, &cache.window, window)
+	if session.options.QuantizedCaches {
+		storedScale := windowScale
+		if windowLen > c.Window {
+			storedScale = s.span(storedScale, 1, windowLen-c.Window, windowLen)
+		}
+		retain(s, &cache.windowScale, storedScale)
+		kv = unpackCache(s, kv, windowScale, quant.FP8Activation32)
+	}
 	cache.windowLen = min(windowLen, c.Window)
 	winSlots := min(c.Window, windowLen)
 	windowIDs := make([]int32, n*winSlots)
@@ -66,9 +85,9 @@ func (session *Session) attention(s *scope, x mlx.Array, layer int, shared *atte
 			if complete > 0 && s.err == nil {
 				key := s.add(mlx.RMSNorm(s.linear(latent, w[p+"indexer.wk.weight"]), w[p+"indexer.k_norm.weight"], c.Hyper.NormEpsilon))
 				key = rotary(s, key, c, r, previous*r, r, false)
-				appendCache(s, &cache.keys, key, previous)
+				session.appendAttentionCache(s, &cache.keys, &cache.keyScale, key, previous, quant.FP4Index32)
 				value := rotary(s, latent, c, r, previous*r, r, false)
-				appendCache(s, &cache.compressed, value, previous)
+				session.appendAttentionCache(s, &cache.compressed, &cache.compressedScale, value, previous, quant.FP4Cache16)
 				cache.compressedLen += complete
 			}
 		}
@@ -88,7 +107,8 @@ func (session *Session) attention(s *scope, x mlx.Array, layer int, shared *atte
 			}
 		}
 		if count > 0 {
-			kv = s.add(mlx.ConcatenateAxis([]mlx.Array{kv, shared.owner.compressed}, 1))
+			compressed := session.readAttentionCache(s, shared.owner.compressed, shared.owner.compressedScale, quant.FP4Cache16)
+			kv = s.add(mlx.ConcatenateAxis([]mlx.Array{kv, compressed}, 1))
 			valid := s.add(mlx.GreaterEqual(shared.topk, s.add(mlx.NewScalarInt(0))))
 			shifted := s.add(mlx.Add(shared.topk, s.add(mlx.NewScalarInt(windowLen))))
 			shifted = s.add(mlx.Where(valid, shifted, s.add(mlx.NewScalarInt(-1))))
@@ -151,7 +171,12 @@ func (session *Session) index(s *scope, x, qr mlx.Array, layer int, shared *atte
 	n, count, r := x.Shape()[1], shared.owner.compressedLen, c.Ratios[layer]
 	q := s.add(mlx.Reshape(s.linear(qr, w[p+"wq_b.weight"]), []int{1, n, c.IndexHeads, c.IndexDim}))
 	q = rotary(s, q, c, r, session.offset, 1, false)
-	keys := s.add(mlx.TransposeAxes(shared.owner.keys, []int{0, 2, 1}))
+	if session.options.QuantizedCaches {
+		data, scales := packCache(s, q, quant.FP4Index32)
+		q = unpackCache(s, data, scales, quant.FP4Index32)
+	}
+	keys := session.readAttentionCache(s, shared.owner.keys, shared.owner.keyScale, quant.FP4Index32)
+	keys = s.add(mlx.TransposeAxes(keys, []int{0, 2, 1}))
 	keys = s.add(mlx.ExpandDims(keys, 1))
 	logits := s.add(mlx.ReLU(s.add(mlx.Matmul(q, keys))))
 	weights := s.add(mlx.Multiply(s.linear(x, w[p+"weights_proj.weight"]), s.scalar(float32(1/math.Sqrt(float64(c.IndexDim*c.IndexHeads))))))

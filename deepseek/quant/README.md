@@ -1,10 +1,72 @@
-# Bounded Weight Decoding
+# Bounded Quantization References
 
-`deepseek/quant` is a pure-Go CPU reference decoder for the storage layouts
-identified by the [released-checkpoint audit](../CHECKPOINT_AUDIT.md). It does
-not load checkpoints, download weights, quantize activations or implement
-quantized GPU matrix multiplication. The released DeepSeek model is still
-unsupported by `inference.Open`.
+`deepseek/quant` provides pure-Go CPU weight decoding and activation/cache
+quantization references, plus lazy MLX activation quantization graphs, for the
+[audited layouts](../CHECKPOINT_AUDIT.md).
+It does not load checkpoints, download weights or implement quantized GPU
+matrix multiplication. The released DeepSeek model is still unsupported by
+`inference.Open`.
+
+## Activation and Cache Quantization
+
+`ActivationLayout` sizes caller-owned buffers; `QuantizeActivation` encodes
+values and scales; `DequantizeActivation` reconstructs float32 or BF16-rounded
+values. Successful calls allocate no buffers and errors leave outputs unchanged.
+Inputs remain immutable, output buffers must not overlap, and no MLX graph is
+attached. For BF16 input behavior, round inputs before encoding.
+
+| Format | Values | Group | Scale |
+| --- | --- | ---: | --- |
+| `FP8Activation32` | E4M3FN | 32 | E8M0, ceiling power of two |
+| `FP4Index32` | Packed E2M1 | 32 | E8M0, ceiling power of two |
+| `FP4Cache16` | Packed E2M1 | 16 | E4M3FN, nearest-even |
+
+FP4 stores the earlier element in the low nibble. Do not pass compressed-KV
+scales to the weight decoder: that decoder assumes E8M0, not E4M3.
+See [activation validation](ACTIVATION_VALIDATION.md) for reproduction, exact
+reference checks, error policies and limits.
+
+### MLX Device Arrays
+
+With the `mlx` build tag, `QuantizeActivationArray` accepts a float32 matrix and
+returns two caller-owned uint8 arrays on the selected device. `data` has shape
+`[rows, cols]` for FP8 or `[rows, cols/2]` for packed FP4; `scales` has shape
+`[rows, cols/group]`. `DequantizeActivationArray` returns a float32 matrix,
+optionally with BF16-rounded values. Neither operation reads tensor values back
+to Go or evaluates the graph. They compose with `mlx.Batch` and `mlx.Compile`.
+
+```go
+data, scales, err := quant.QuantizeActivationArray(x, quant.FP4Cache16)
+if err != nil {
+    return err
+}
+defer data.Close()
+defer scales.Close()
+restored, err := quant.DequantizeActivationArray(data, scales,
+    quant.FP4Cache16, quant.BFloat16)
+if err != nil {
+    return err
+}
+defer restored.Close()
+// Pass restored into the next MLX operation, or evaluate when needed.
+```
+
+These are **inference-only reference graphs**, with gradients explicitly stopped,
+not optimized kernels or a straight-through estimator for training. Shape/type
+errors are immediate. Because values stay lazy, nonfinite inputs or float32
+reconstruction overflow mark an entire group's scale as 255; decoding it yields
+NaNs. Invalid externally supplied scales and NaN value codes also decode to NaNs.
+This deliberately differs from the synchronous host API's `ErrNonFinite` policy.
+Callers must retain the format alongside the arrays; scale bytes alone cannot
+distinguish E8M0 from E4M3.
+
+The [device validation report](ACTIVATION_VALIDATION.md#mlx-device-graphs) includes
+exact CPU/GPU checks, compiled graphs and subnormal handling. Packed outputs
+reduce retained storage, but graph construction/evaluation still uses full-width
+intermediates. No performance or peak-memory improvement is claimed. Attention
+sessions default to their existing float32 path. `SessionOptions.QuantizedCaches`
+explicitly enables [packed cache insertion and consumption](../QUANTIZED_CACHE_VALIDATION.md).
+It does not enable quantized matmul or full released-model inference.
 
 ## Download Real Validation Samples
 
