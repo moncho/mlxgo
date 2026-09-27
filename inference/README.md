@@ -11,11 +11,11 @@ download anything, execute repository code, or evaluate chat-template scripts.
 | Released DeepSeek-V4.1-Flash checkpoint | Unsupported | Unsupported | Unsupported |
 
 Qwen requires tied embeddings, SiLU, full attention, unscaled RoPE and zero
-dropout. Quantized checkpoints and unknown architectures return
+dropout. Quantized Qwen checkpoints and unknown architectures return
 errors. Every required tensor's shape and dtype is checked. DeepSeek bundles
 use `deepseek.Config` and `Config.ParameterShapes`, not the released checkpoint
-format; unknown configuration fields are rejected. Additional tensor entries
-are not loaded. Optional float32 Engram uses prepared hash/token-map metadata
+format; unknown configuration fields are rejected. DeepSeek requires an exact
+tensor inventory. Optional float32 Engram uses prepared hash/token-map metadata
 and validated table/projection weights. Released FP8 Engram storage, vision,
 DSpark and production quantization remain future work, not capabilities implied
 by the common API.
@@ -24,7 +24,33 @@ Both supported architectures accept `model.safetensors` or
 `model.safetensors.index.json` with local shard files, using the shared
 [checkpoint loader](../checkpoint/README.md). Index routing, all referenced
 headers and tensor byte ranges are validated before loading arrays. This adds
-storage support, not new architectures, quantization or memory offloading.
+storage support, not new architectures or memory offloading. Prepared packed
+DeepSeek bundles additionally require explicit options below.
+
+### Prepared Packed DeepSeek
+
+```go
+model, err := inference.Open("models/prepared-deepseek", inference.Options{
+    DeepSeek: &inference.DeepSeekOptions{
+        Weights: deepseek.LoadOptions{
+            FP4Experts: []deepseek.ExpertID{{Layer: 0, Index: 0}},
+            FP8AttentionKV: []int{0},
+        },
+        Session: deepseek.SessionOptions{SparseExperts: true, QuantizedCaches: true},
+    },
+})
+```
+
+Import `github.com/moncho/mlxgo/deepseek` alongside `inference`. These options
+are rejected for Qwen. The [prepared U8 layout](../deepseek/README.md#sparse-execution-and-packed-loading)
+is explicit, not automatic detection of a released checkpoint. Unselected
+parameters must be F32; all metadata is checked before native allocation.
+The DeepSeek loader defaults to a 1 GiB total tensor-payload limit, configurable
+with `Weights.MaxBytes`. This is not a peak-memory cap. Packed weights and sparse
+dispatch are independent choices, and default sessions remain dense. `Inspect`
+reports architecture capabilities, not whether supplied packed selections match
+the weight files. The command-line generator does not yet expose packed selections;
+use the Go API for these bundles.
 
 ## Go API
 

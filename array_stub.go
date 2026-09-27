@@ -482,6 +482,10 @@ func (Array) UInt32Data() ([]uint32, error) {
 	return nil, errBuiltWithoutMLX
 }
 
+func (Array) UInt8Data() ([]uint8, error) {
+	return nil, errBuiltWithoutMLX
+}
+
 func (Array) UInt64Data() ([]uint64, error) {
 	return nil, errBuiltWithoutMLX
 }

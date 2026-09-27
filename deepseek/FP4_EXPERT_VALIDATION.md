@@ -117,7 +117,9 @@ go test -tags 'mlx mlxruntime' ./deepseek -run '^$' \
   -bench '^BenchmarkReleasedFP4Expert$' -benchtime=300ms -count=3
 ```
 
-Full released-model loading, pretrained tokenizer integration, efficient sparse
-expert dispatch and activation-quantized kernels remain separate work. In
-particular, the model still evaluates every expert and masks contributions;
-packed storage does not fix that scaling cost or prove whole-model feasibility.
+Full released-model loading, pretrained tokenizer integration, fused sparse
+expert kernels and activation-quantized kernels remain separate work. This
+report measures individual experts. The later [sparse scheduler and prepared
+loader](SPARSE_EXPERT_VALIDATION.md) avoid unused expert execution when explicitly
+enabled; default sessions still evaluate every expert and mask contributions.
+Neither change proves whole-model feasibility or provides weight offloading.

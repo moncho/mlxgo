@@ -16,6 +16,14 @@ func qwenConfig() qwen2.Config {
 	return qwen2.Config{Architectures: []string{"Qwen2ForCausalLM"}, ModelType: "qwen2", HiddenSize: 32, IntermediateSize: 64, NumLayers: 2, NumHeads: 2, NumKVHeads: 1, RMSNormEps: 1e-6, RopeTheta: 1000000, TieWordEmbeddings: true, VocabSize: 32, MaxPositions: 512, HiddenAct: "silu"}
 }
 
+func TestRejectDeepSeekOptionsForQwen(t *testing.T) {
+	dir := t.TempDir()
+	writeConfig(t, dir, qwenConfig())
+	if _, err := Open(dir, Options{DeepSeek: &DeepSeekOptions{}}); !errors.Is(err, ErrUnsupported) {
+		t.Fatal(err)
+	}
+}
+
 type fixture struct {
 	Config     deepseek.Config `json:"config"`
 	Parameters map[string]struct {

@@ -9,7 +9,8 @@ import (
 // Config describes the experimental float32 text backbone, not the released
 // checkpoint format. Engram uses optional prepared metadata and float32 weights;
 // vision, DSpark and released quantized checkpoint loading are not supported.
-// Experimental packed weights are supplied separately through ModelOptions.
+// Experimental packed weights are supplied through ModelOptions or selected
+// from prepared U8 bundles through LoadOptions.
 // Layer numbers are zero-based. A source publishes state to subsequent layers
 // until another source replaces it; changing ratio requires a new KV source.
 type Config struct {

@@ -1516,6 +1516,36 @@ func (a Array) UInt32Data() ([]uint32, error) {
 	})
 }
 
+// UInt8Data evaluates the array and copies its bytes into Go, including views.
+func (a Array) UInt8Data() ([]uint8, error) {
+	return runMLXValue(func() ([]uint8, error) {
+		contiguous, err := Contiguous(a)
+		if err != nil {
+			return nil, err
+		}
+		defer contiguous.Close()
+		if err := contiguous.Eval(); err != nil {
+			return nil, err
+		}
+		if err := contiguous.expectDType(UInt8); err != nil {
+			return nil, err
+		}
+		n := contiguous.Size()
+		if n == 0 {
+			return []uint8{}, nil
+		}
+		handle, err := contiguous.handleValue()
+		if err != nil {
+			return nil, err
+		}
+		ptr := C.mlx_array_data_uint8(handle)
+		if ptr == nil {
+			return nil, errors.New("mlxgo: MLX did not return materialized uint8 data")
+		}
+		return append([]uint8(nil), unsafe.Slice((*uint8)(unsafe.Pointer(ptr)), n)...), nil
+	})
+}
+
 // UInt64Data evaluates the array and copies its uint64 contents into Go.
 func (a Array) UInt64Data() ([]uint64, error) {
 	return runMLXValue(func() ([]uint64, error) {

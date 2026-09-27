@@ -58,8 +58,8 @@ type ModelOptions struct {
 	// FP4Experts replaces all three matrices for each selected routed/shared
 	// expert. Omit their w1/w2/w3 names from parameters. Dim and InterDim must
 	// be divisible by 32. Bytes are copied; no float32 duplicates are retained.
-	// Activations remain float32 and every expert is still evaluated, not sparse
-	// dispatch. Inference-only, opt-in; no automatic checkpoint conversion.
+	// Activations remain float32; sparse scheduling is selected separately via
+	// SessionOptions. Inference-only, opt-in; no automatic checkpoint conversion.
 	FP4Experts map[ExpertID]FP4ExpertWeights
 }
 
@@ -250,6 +250,10 @@ type Session struct {
 
 // SessionOptions controls per-sequence inference behavior, not checkpoint format.
 type SessionOptions struct {
+	// SparseExperts executes only selected token/expert pairs. It reads router
+	// indices to Go once per layer; weights and activations stay on device.
+	// Inference-only, not compatible with Compile/autograd. Defaults stay dense.
+	SparseExperts bool
 	// QuantizedCaches stores window KV as FP8 and compressed KV/index keys as
 	// packed FP4, and quantizes index queries before scoring. Activations and
 	// reconstructed values remain float32 and are not BF16-rounded. Projection
@@ -266,8 +270,8 @@ func (m *Model) NewSession() (session *Session, err error) {
 	return m.NewSessionWithOptions(SessionOptions{})
 }
 
-// NewSessionWithOptions creates a sequence with immutable cache options.
-// NewSession retains the existing float32-cache behavior.
+// NewSessionWithOptions creates a sequence with immutable cache/execution options.
+// NewSession retains float32 caches and dense expert execution.
 func (m *Model) NewSessionWithOptions(options SessionOptions) (session *Session, err error) {
 	err = mlx.Batch(func() error {
 		if m == nil || m.closed {
@@ -441,7 +445,9 @@ func (session *Session) block(s *scope, x, previous mlx.Array, layer int, shared
 	}
 	n := h.Shape()[1]
 	h = s.add(mlx.Reshape(h, []int{n, c.Dim}))
-	if len(session.model.fp4Experts) > 0 {
+	if session.options.SparseExperts {
+		h = session.model.sparseMoE(s, h, layer)
+	} else if len(session.model.fp4Experts) > 0 {
 		h = session.model.packedMoE(s, h, layer)
 	} else {
 		expert := func(name string) ExpertWeights {

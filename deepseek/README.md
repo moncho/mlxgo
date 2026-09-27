@@ -43,7 +43,9 @@ Packed attention weights and quantized caches now pass
 [combined real-layer validation](COMBINED_QUANTIZATION_VALIDATION.md), including
 compressed/shared attention. Opt-in [packed FP4 experts](FP4_EXPERT_VALIDATION.md)
 also execute through MLX's native weight-only kernel. Activation-quantized GEMM,
-efficient sparse expert dispatch and full released-checkpoint loading remain unsupported.
+fused device-side expert dispatch and full released-checkpoint loading remain unsupported.
+An opt-in [sparse expert scheduler and prepared packed loader](SPARSE_EXPERT_VALIDATION.md)
+now avoid evaluating unused experts and manual byte-supply at model construction.
 Reproduce the report offline:
 
 ```sh
@@ -193,10 +195,51 @@ This is not the compressed-cache FP4 format. Constructors copy caller bytes,
 reject duplicates/nonfinite weights, and retain no float32 weight duplicate.
 
 Packed experts may be mixed with float32 experts and FP8 attention options;
-cache quantization remains a separate session choice. Defaults, loader behavior
-and exported float32 bundles are unchanged. **The model still evaluates every
-expert and masks contributions.** Packed storage does not provide sparse
-dispatch, activation quantization, or full-size model feasibility by itself.
+cache quantization remains a separate session choice. Default execution still
+evaluates every expert and masks contributions. Select `SparseExperts: true`
+to execute only selected token/expert pairs. Packing by itself does not enable
+this scheduler or provide activation quantization or full-size model feasibility.
+
+### Sparse Execution And Packed Loading
+
+```go
+model, err := deepseek.Load("models/prepared-deepseek", config, deepseek.LoadOptions{
+    FP4Experts: []deepseek.ExpertID{{Layer: 0, Index: 0}, {Layer: 0, Index: -1}},
+    FP8AttentionKV: []int{0},
+    MaxBytes: 1 << 30,
+})
+// Check err, then defer model.Close().
+session, err := model.NewSessionWithOptions(deepseek.SessionOptions{
+    SparseExperts: true,
+    QuantizedCaches: true,
+})
+```
+
+The loader accepts prepared single-file or indexed safetensors bundles, not
+the released checkpoint. Each selected packed projection uses U8 data under
+its `.weight` name and U8 E8M0 scales under the corresponding `.scale` name.
+FP4 data/scales shapes are `[rows,cols/2]` / `[rows,cols/32]`; FP8 shapes are
+`[rows,cols]` / `[rows/32,cols/32]`. FP8 scales are block32, FP4 scales row32.
+Nonselected tensors must be F32. All three matrices of each selected expert
+must be packed. Duplicate selections, missing/extra tensors, incorrect shapes
+or dtypes, nonfinite packed values, and incompatible grouped-output weights
+are errors. Original F8 safetensors storage is not accepted by this loader.
+
+`MaxBytes` limits total tensor payload before native allocation (default 1 GiB);
+it is not an RSS limit. Shard maps, packed Go byte buffers and native copies can
+coexist during loading. No full float32 duplicate of packed weights is created.
+`config.json` retains the experimental `mlxgo.deepseek.float32.v1` architecture
+contract; the explicit load options describe U8 storage substitutions. No
+implicit quantization inference or conversion is performed.
+
+Sparse execution reads the small routing-index array to Go once per layer,
+gathers inputs by expert, skips empty expert batches, and restores token order.
+Routing weights stay on device and are applied before the down projection;
+the shared expert still receives every token. `SparseMoE` exposes the same
+scheduler for float32 weights. These paths are inference-only: do not use them
+inside autograd or `Compile`. The existing `MoE` is still the lazy,
+differentiable reference. Small/dense workloads may not benefit from the
+synchronization and gather overhead. See [validation and benchmarks](SPARSE_EXPERT_VALIDATION.md).
 
 Both DeepSeek and `qwen2.NewSession` implement `lm.Session`: `Step`, `Position`
 and `Close`. The same `lm.Greedy` decoder works with either architecture. Input
@@ -291,10 +334,12 @@ Each logit is compared with absolute tolerance `2e-5`; observed reference errors
 on the development Mac are below `2e-6`. Reference ties in sparse top-k are not
 specified identically across backends, so the fixture avoids boundary ties.
 
-The MoE implementation evaluates all experts and masks their contributions. That
+The default MoE implementation evaluates all experts and masks their contributions. That
 is intentional for small correctness tests and differentiability; its cost grows
 with **all** experts, not only the selected experts. It is not a production MoE
-implementation. Sparse attention materializes gathered keys/values and scores;
+implementation. The opt-in `SparseExperts` scheduler avoids unused work but
+requires host synchronization and keeps all expert weights resident; it is not
+a fused or offloaded implementation. Sparse attention materializes gathered keys/values and scores;
 it is not a fused sparse kernel. Repeated argmax implements expert top-k; ties
 choose the lowest index, unlike PyTorch's unspecified tie ordering. The sparse
 indexer uses full sorting, not an optimized partial selection kernel. Window
@@ -318,7 +363,7 @@ reference code introduce these requirements beyond memory capacity:
 | Sparse indexer | Float32 scoring, candidate filtering and sharing implemented; quantized scoring and optimized top-k remain |
 | Single-pass mHC | Complete block wiring implemented and compared through model logits |
 | Engram | Float32 remapping/hash/lookup/gating implemented; released tokenizer metadata, FP8 table loading and rounding remain |
-| Checkpoint storage | Indexed I/O, released text mapping and bounded CPU FP8/FP4 decoding/BF16 rounding tested; opt-in native FP8 attention and FP4 routed/shared experts validated; `wo_a` requires BF16-exact weights; full released checkpoint loading and efficient sparse expert dispatch remain unsupported |
+| Checkpoint storage | Indexed I/O, released text mapping and bounded CPU FP8/FP4 decoding/BF16 rounding tested; prepared U8 packed bundle loading and opt-in sparse FP4/float32 expert execution supported; `wo_a` requires BF16-exact weights; full released checkpoint loading, fused expert kernels and offloading remain unsupported |
 | Cache quantization | Opt-in packed sliding-window KV, compressed KV and index keys, plus quantized index queries; float32 activations and separate opt-in packed attention weights, no activation-quantized GEMM |
 | Text input/output | Official encoding rules and tokenizer integration; no assumption that the existing Qwen chat formatting applies |
 | Vision | DeepSeek-ViT, image processing, projection and vision-specific routing bias |

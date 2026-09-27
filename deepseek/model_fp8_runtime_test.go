@@ -240,7 +240,11 @@ func testFP8ModelSessions(t *testing.T, selection fp8AttentionSelection) {
 }
 
 func fp8SessionOutput(m *Model, tokens []int32, quantizedCaches bool) ([]float32, error) {
-	s, err := m.NewSessionWithOptions(SessionOptions{QuantizedCaches: quantizedCaches})
+	return sessionOutputOptions(m, tokens, SessionOptions{QuantizedCaches: quantizedCaches})
+}
+
+func sessionOutputOptions(m *Model, tokens []int32, options SessionOptions) ([]float32, error) {
+	s, err := m.NewSessionWithOptions(options)
 	if err != nil {
 		return nil, err
 	}

@@ -352,7 +352,7 @@ make finetune-mlp
 - Introspection: `Shape`, `Size`, `DType`, shared close state across copied
   `Array` values
 - Data copies: `Float32Data`, `Float64Data`, `Int32Data`, `Int64Data`,
-  `UInt32Data`, `UInt64Data`, `BoolData`
+  `UInt8Data`, `UInt32Data`, `UInt64Data`, `BoolData`
 - Elementwise ops: `Add`, `Subtract`, `Multiply`, `Divide`, `Maximum`,
   `Minimum`, `Power`, `Clip`, `Abs`, `Exp`, `Log`, `Negative`, `Square`,
   `Sqrt`, `Sigmoid`, `Tanh`, `Sin`, `Cos`, `ReLU`, `StopGradient`
@@ -391,6 +391,8 @@ ordinary inference calls. The [packed attention report](deepseek/FP8_ATTENTION_V
 shows whole-attention timing and allocator measurements on real weight samples.
 The [combined quantization report](deepseek/COMBINED_QUANTIZATION_VALIDATION.md)
 and [FP4 expert report](deepseek/FP4_EXPERT_VALIDATION.md) cover the newer paths.
+The [sparse expert report](deepseek/SPARSE_EXPERT_VALIDATION.md) measures optional
+token-to-expert dispatch and documents prepared packed checkpoint loading.
 
 ## Development Notes
 

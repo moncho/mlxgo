@@ -13,7 +13,6 @@ import (
 
 	mlx "github.com/moncho/mlxgo"
 	"github.com/moncho/mlxgo/bpe"
-	"github.com/moncho/mlxgo/checkpoint"
 	"github.com/moncho/mlxgo/deepseek"
 	"github.com/moncho/mlxgo/lm"
 	"github.com/moncho/mlxgo/qwen2"
@@ -32,9 +31,19 @@ type Info struct {
 	Text, Adapters          bool
 }
 
-// Options selects an optional mlxgo Qwen LoRA checkpoint. Its base hash and
-// configuration must match the model being loaded.
-type Options struct{ Adapters string }
+// Options selects architecture-specific loading behavior. Qwen adapter base
+// hashes/configurations must match; DeepSeek options describe prepared bundles.
+type Options struct {
+	Adapters string
+	DeepSeek *DeepSeekOptions
+}
+
+// DeepSeekOptions selects prepared packed weights and per-session execution.
+// It is rejected for other architectures; released checkpoints remain unsupported.
+type DeepSeekOptions struct {
+	Weights deepseek.LoadOptions
+	Session deepseek.SessionOptions
+}
 type manifest struct {
 	info     Info
 	qwen     qwen2.Config
@@ -139,6 +148,9 @@ func Open(dir string, options Options) (*Model, error) {
 	if options.Adapters != "" && !mf.info.Adapters {
 		return nil, fmt.Errorf("%w: adapters for %s", ErrUnsupported, mf.info.Architecture)
 	}
+	if options.DeepSeek != nil && mf.info.Architecture != "deepseek_v41" {
+		return nil, fmt.Errorf("%w: DeepSeek options for %s", ErrUnsupported, mf.info.Architecture)
+	}
 	m := &Model{info: mf.info, sessions: make(map[*session]struct{})}
 	if mf.info.Text {
 		tok, err := bpe.Load(filepath.Join(dir, "tokenizer.json"))
@@ -192,30 +204,24 @@ func Open(dir string, options Options) (*Model, error) {
 			return errors.Join(err, w.Close())
 		}
 	} else {
-		f, err := checkpoint.Open(dir)
+		var o DeepSeekOptions
+		if options.DeepSeek != nil {
+			o = *options.DeepSeek
+		}
+		w, err := deepseek.Load(dir, mf.deepseek, o.Weights)
 		if err != nil {
 			return nil, err
 		}
-		defer f.Close()
-		shapes, _ := mf.deepseek.ParameterShapes()
-		params := make(map[string]mlx.Array, len(shapes))
-		defer func() {
-			for _, a := range params {
-				a.Close()
-			}
-		}()
-		for name := range shapes {
-			a, e := f.Get(name)
-			if e != nil {
-				return nil, fmt.Errorf("inference: parameter %s: %w", name, e)
-			}
-			params[name] = a
-		}
-		w, err := deepseek.NewModel(mf.deepseek, params)
+		probe, err := w.NewSessionWithOptions(o.Session)
 		if err != nil {
+			w.Close()
 			return nil, err
 		}
-		m.newSession = func() (lm.Session, error) { return w.NewSession() }
+		if err := probe.Close(); err != nil {
+			w.Close()
+			return nil, err
+		}
+		m.newSession = func() (lm.Session, error) { return w.NewSessionWithOptions(o.Session) }
 		m.release = w.Close
 	}
 	return m, nil
