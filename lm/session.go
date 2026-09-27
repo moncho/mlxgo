@@ -22,34 +22,50 @@ type Session interface {
 // an existing session, which remains caller-owned; tokenization is external.
 // The last returned token has not been consumed by the session.
 func Greedy(s Session, prompt []int32, count int, eos ...int32) ([]int32, error) {
-	return decode(s, prompt, count, greedyPick, eos...)
+	return Stream(s, prompt, count, SamplingOptions{}, nil, eos...)
 }
 
-func decode(s Session, prompt []int32, count int, pick func(mlx.Array) (int32, error), eos ...int32) ([]int32, error) {
+// Stream emits on the calling goroutine, outside Batch, and returns partial tokens on error.
+func Stream(s Session, prompt []int32, count int, o SamplingOptions, emit func(int32) error, eos ...int32) ([]int32, error) {
+	if err := o.Validate(); err != nil {
+		return nil, err
+	}
 	if s == nil || len(prompt) == 0 || count < 0 {
 		return nil, fmt.Errorf("lm: nonempty prompt, session and nonnegative count required")
 	}
 	if count == 0 {
 		return []int32{}, nil
 	}
+	pick := greedyPick
+	if o.Temperature > 0 {
+		if err := mlx.RandomSeed(o.Seed); err != nil {
+			return nil, err
+		}
+		pick = func(a mlx.Array) (int32, error) { return sampledPick(a, o) }
+	}
 	var result []int32
 	input := prompt
 	for i := 0; i < count; i++ {
 		logits, err := s.Step(input)
 		if err != nil {
-			return nil, err
+			return result, err
 		}
 		shape := logits.Shape()
 		if len(shape) != 3 || shape[0] != 1 || shape[1] != 1 || shape[2] < 1 {
 			logits.Close()
-			return nil, fmt.Errorf("lm: expected logits [1,1,vocabulary], got %v", shape)
+			return result, fmt.Errorf("lm: expected logits [1,1,vocabulary], got %v", shape)
 		}
 		token, err := pick(logits)
 		logits.Close()
 		if err != nil {
-			return nil, err
+			return result, err
 		}
 		result = append(result, token)
+		if emit != nil {
+			if err := emit(token); err != nil {
+				return result, fmt.Errorf("lm: emit token: %w", err)
+			}
+		}
 		for _, stop := range eos {
 			if token == stop {
 				return result, nil

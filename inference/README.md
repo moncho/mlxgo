@@ -105,6 +105,17 @@ reseeds MLX's global random generator before the first step, so reproducibility
 requires that other callers do not interleave random operations.
 The CLI exposes `-temperature`, `-top-p`, and `-seed`, all defaulting to zero.
 
+`Model.Stream(prompt, count, options, func(text string) error)` emits incremental
+text on the calling goroutine outside the worker batch. It returns the same
+text/tokens as `GenerateWith`; a callback error stops generation and returns
+partial tokens/text with the wrapped error. UTF-8 suffixes wait for completion
+and any remainder is flushed at the end. EOS is not emitted. A nil callback
+collects output without streaming. `lm.Stream` provides the raw-token equivalent,
+including EOS. Callbacks may call MLX; do not wrap streaming in `mlx.Batch` or
+an MLX closure when the callback waits for another goroutine needing MLX.
+The CLI streams prompt-mode text and retains the final timing line; raw-token
+mode still prints its final list.
+
 For incremental use, call `NewSession`, `Step`, `Position`, and `Close` through
 `lm.Session`. Returned logits are caller-owned `[1,1,vocab]` arrays. DeepSeek
 accepts a multi-token prefill and then one token per step. Use independent

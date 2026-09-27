@@ -154,6 +154,12 @@ requires a positive temperature when top-p is supplied. `lm.Sample`,
 `inference.Model.GenerateWith`, and `GenerateTokensWith` accept
 `lm.SamplingOptions`. Sampling seeds MLX's global RNG; reproducibility assumes
 no interleaved random operations from other callers.
+Prompt-mode generation streams text as tokens arrive. `inference.Model.Stream`
+accepts a text callback; `lm.Stream` exposes token callbacks. They run on the
+calling goroutine outside the worker batch. Callback errors stop generation and
+return partial output; incomplete UTF-8 suffixes are withheld until complete
+or flushed at the end. Do not invoke streaming inside a worker callback or Batch
+if its consumer needs MLX work on another goroutine.
 Only the standard Qwen2 architecture with SiLU, full attention, unscaled RoPE,
 tied embeddings, zero dropout, and bf16 safetensors weights is supported.
 Weights can be a single file or an indexed set of shards; see the

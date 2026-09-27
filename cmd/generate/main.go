@@ -112,7 +112,10 @@ func run(o options, output io.Writer) error {
 	if o.tokens != nil {
 		r, err = m.GenerateTokensWith(o.tokens, o.maxTokens, o.sampling)
 	} else {
-		r, err = m.GenerateWith(o.prompt, o.maxTokens, o.sampling)
+		r, err = m.Stream(o.prompt, o.maxTokens, o.sampling, func(text string) error {
+			_, err := io.WriteString(output, text)
+			return err
+		})
 	}
 	if err != nil {
 		return err
@@ -120,7 +123,9 @@ func run(o options, output io.Writer) error {
 	if o.tokens != nil {
 		fmt.Fprintf(output, "Generated token IDs: %v\n", r.Tokens)
 	} else {
-		fmt.Fprintln(output, r.Text)
+		if _, err := fmt.Fprintln(output); err != nil {
+			return err
+		}
 	}
 	if info.Format == "mlxgo.deepseek.float32.v1" {
 		fmt.Fprintln(output, "Experimental float32 bundle; not a released DeepSeek checkpoint.")

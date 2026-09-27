@@ -27,22 +27,7 @@ func (o SamplingOptions) Validate() error {
 
 // Sample generates with MLX's global RNG; other random operations can alter a seeded sequence.
 func Sample(s Session, prompt []int32, count int, o SamplingOptions, eos ...int32) ([]int32, error) {
-	if err := o.Validate(); err != nil {
-		return nil, err
-	}
-	if o.Temperature == 0 {
-		return Greedy(s, prompt, count, eos...)
-	}
-	if s == nil || len(prompt) == 0 || count < 0 {
-		return nil, fmt.Errorf("lm: nonempty prompt, session and nonnegative count required")
-	}
-	if count == 0 {
-		return []int32{}, nil
-	}
-	if err := mlx.RandomSeed(o.Seed); err != nil {
-		return nil, err
-	}
-	return decode(s, prompt, count, func(a mlx.Array) (int32, error) { return sampledPick(a, o) }, eos...)
+	return Stream(s, prompt, count, o, nil, eos...)
 }
 
 type scope struct {

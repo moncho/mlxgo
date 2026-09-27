@@ -2,7 +2,10 @@ package inference
 
 import (
 	"fmt"
+	"slices"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	mlx "github.com/moncho/mlxgo"
 	"github.com/moncho/mlxgo/lm"
@@ -25,6 +28,11 @@ func (m *Model) Generate(prompt string, maxTokens int) (Result, error) {
 
 // GenerateWith generates text with optional temperature and nucleus sampling.
 func (m *Model) GenerateWith(prompt string, maxTokens int, o lm.SamplingOptions) (Result, error) {
+	return m.Stream(prompt, maxTokens, o, nil)
+}
+
+// Stream emits text on the calling goroutine; callback errors return partial output.
+func (m *Model) Stream(prompt string, maxTokens int, o lm.SamplingOptions, emit func(string) error) (Result, error) {
 	if err := o.Validate(); err != nil {
 		return Result{}, err
 	}
@@ -38,20 +46,59 @@ func (m *Model) GenerateWith(prompt string, maxTokens int, o lm.SamplingOptions)
 		return Result{}, fmt.Errorf("inference: max tokens must be positive")
 	}
 	ids := m.encode(prompt)
-	r, err := m.generate(ids, maxTokens, o, m.eos)
-	if err != nil {
-		return r, err
-	}
-	if len(r.Tokens) > 0 {
-		for _, id := range m.eos {
-			if r.Tokens[len(r.Tokens)-1] == id {
-				r.Tokens = r.Tokens[:len(r.Tokens)-1]
-				break
+	var tokens []int32
+	var text textStream
+	var onToken func(int32) error
+	if emit != nil {
+		onToken = func(id int32) error {
+			if slices.Contains(m.eos, id) {
+				return nil
 			}
+			tokens = append(tokens, id)
+			return text.update(m.decode(tokens), false, emit)
 		}
 	}
+	r, err := m.generate(ids, maxTokens, o, onToken, m.eos)
+	if len(r.Tokens) > 0 && slices.Contains(m.eos, r.Tokens[len(r.Tokens)-1]) {
+		r.Tokens = r.Tokens[:len(r.Tokens)-1]
+	}
 	r.Text = m.decode(r.Tokens)
-	return r, nil
+	if err == nil && emit != nil {
+		err = text.update(r.Text, true, emit)
+	}
+	return r, err
+}
+
+type textStream struct{ emitted string }
+
+func (s *textStream) update(decoded string, final bool, emit func(string) error) error {
+	if !final {
+		decoded = stableText(decoded)
+	}
+	if !strings.HasPrefix(decoded, s.emitted) {
+		return fmt.Errorf("inference: decoded text changed after emission")
+	}
+	suffix := decoded[len(s.emitted):]
+	if suffix == "" {
+		return nil
+	}
+	if err := emit(suffix); err != nil {
+		return fmt.Errorf("inference: emit text: %w", err)
+	}
+	s.emitted = decoded
+	return nil
+}
+
+func stableText(text string) string {
+	for i := 0; i < len(text); {
+		if !utf8.FullRuneInString(text[i:]) {
+			text = text[:i]
+			break
+		}
+		_, n := utf8.DecodeRuneInString(text[i:])
+		i += n
+	}
+	return strings.TrimRight(text, "\ufffd")
 }
 
 // GenerateTokens works for every supported architecture without a tokenizer.
@@ -62,10 +109,10 @@ func (m *Model) GenerateTokens(prompt []int32, maxTokens int, stop ...int32) (Re
 
 // GenerateTokensWith samples raw IDs, including a matching stop token.
 func (m *Model) GenerateTokensWith(prompt []int32, maxTokens int, o lm.SamplingOptions, stop ...int32) (Result, error) {
-	return m.generate(prompt, maxTokens, o, stop)
+	return m.generate(prompt, maxTokens, o, nil, stop)
 }
 
-func (m *Model) generate(prompt []int32, maxTokens int, o lm.SamplingOptions, stop []int32) (r Result, err error) {
+func (m *Model) generate(prompt []int32, maxTokens int, o lm.SamplingOptions, emit func(int32) error, stop []int32) (r Result, err error) {
 	if err := o.Validate(); err != nil {
 		return r, err
 	}
@@ -90,7 +137,7 @@ func (m *Model) generate(prompt []int32, maxTokens int, o lm.SamplingOptions, st
 	defer s.Close()
 	r.PrefillTokens = len(prompt)
 	timed := &timedSession{Session: s, result: &r}
-	r.Tokens, err = lm.Sample(timed, prompt, maxTokens, o, stop...)
+	r.Tokens, err = lm.Stream(timed, prompt, maxTokens, o, emit, stop...)
 	return r, err
 }
 

@@ -3,10 +3,27 @@
 package lm
 
 import (
+	"errors"
 	mlx "github.com/moncho/mlxgo"
 	"slices"
 	"testing"
 )
+
+func TestStreamCallback(t *testing.T) {
+	s := &scriptedSession{}
+	want := errors.New("stop")
+	var emitted []int32
+	got, err := Stream(s, []int32{7}, 5, SamplingOptions{}, func(id int32) error {
+		emitted = append(emitted, id)
+		if len(emitted) == 2 {
+			return want
+		}
+		return nil
+	})
+	if !errors.Is(err, want) || !slices.Equal(got, []int32{1, 0}) || !slices.Equal(got, emitted) || len(s.inputs) != 2 {
+		t.Fatalf("%v %v %v", got, emitted, err)
+	}
+}
 
 type scriptedSession struct {
 	inputs           [][]int32
