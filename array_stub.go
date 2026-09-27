@@ -238,6 +238,10 @@ func Sum(_ Array, _ bool) (Array, error) {
 
 func CumsumAxis(_ Array, _ int) (Array, error) { return Array{}, errBuiltWithoutMLX }
 
+func Slice(_ Array, _, _, _ []int) (Array, error) { return Array{}, errBuiltWithoutMLX }
+
+func SliceUpdate(_, _ Array, _, _, _ []int) (Array, error) { return Array{}, errBuiltWithoutMLX }
+
 func SumAxis(_ Array, _ int, _ bool) (Array, error) {
 	return Array{}, errBuiltWithoutMLX
 }

@@ -383,7 +383,7 @@ make finetune-mlp
   `Batch`
 - Shape/type ops: `Reshape`, `Transpose`, `TransposeAxes`, `BroadcastTo`,
   `ExpandDims`, `ExpandDimsAxes`, `Squeeze`, `SqueezeAxis`, `SqueezeAxes`,
-  `Flatten`, `AsType`, `Contiguous`
+  `Flatten`, `AsType`, `Contiguous`, `Slice`, `SliceUpdate`
 - Model ops: `Softmax`, `SoftmaxAxis`, `SoftmaxAxes`, `Argmax`, `ArgmaxAxis`,
   `Argmin`, `ArgminAxis`, `Equal`, `Greater`, `GreaterEqual`, `Less`,
   `LessEqual`, `Where`, `Take`, `TakeAxis`, `TakeAlongAxis`, `Gather`,

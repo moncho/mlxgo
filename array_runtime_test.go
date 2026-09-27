@@ -63,6 +63,50 @@ func TestRuntimeCumsumAxis(t *testing.T) {
 	}
 }
 
+func TestRuntimeSlices(t *testing.T) {
+	for _, device := range []DeviceType{DeviceCPU, DeviceGPU} {
+		if err := SetDefaultDevice(device, 0); err != nil {
+			t.Fatal(err)
+		}
+		data := make([]float32, 24)
+		for i := range data {
+			data[i] = float32(i)
+		}
+		a := mustNewFloat32(t, data, []int{2, 3, 4})
+		view, err := Slice(a, []int{0, 0, 0}, []int{2, 3, 4}, []int{1, 2, 2})
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertShape(t, view, []int{2, 2, 2})
+		assertFloat32Data(t, view, []float32{0, 2, 8, 10, 12, 14, 20, 22})
+		view.Close()
+		block := mustNewFloat32(t, []float32{100, 101, 102, 103, 104, 105, 106, 107}, []int{2, 1, 4})
+		out, err := SliceUpdate(a, block, []int{0, 1, 0}, []int{2, 2, 4}, []int{1, 1, 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertFloat32Data(t, out, []float32{0, 1, 2, 3, 100, 101, 102, 103, 8, 9, 10, 11, 12, 13, 14, 15, 104, 105, 106, 107, 20, 21, 22, 23})
+		assertFloat32Data(t, a, data)
+		out.Close()
+		for _, args := range []struct{ start, stop, stride []int }{
+			{[]int{0}, []int{2}, []int{1}},
+			{[]int{0, 0, 0}, []int{2}, []int{1, 1, 1}},
+			{[]int{0, 0, 0}, []int{2, 3, 4}, []int{1, 0, 1}},
+		} {
+			if x, e := Slice(a, args.start, args.stop, args.stride); e == nil {
+				x.Close()
+				t.Fatal("accepted invalid slice")
+			}
+			if x, e := SliceUpdate(a, block, args.start, args.stop, args.stride); e == nil {
+				x.Close()
+				t.Fatal("accepted invalid slice update")
+			}
+		}
+		block.Close()
+		a.Close()
+	}
+}
+
 func TestRuntimeMatmulReshapeAndReductions(t *testing.T) {
 	if err := SetDefaultCPU(); err != nil {
 		t.Fatal(err)

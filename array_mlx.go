@@ -596,6 +596,51 @@ func Sum(a Array, keepdims bool) (Array, error) {
 	})
 }
 
+// Slice returns a strided view with one start, stop and stride per dimension.
+func Slice(a Array, start, stop, strides []int) (Array, error) {
+	if err := validateSlice(a, start, stop, strides); err != nil {
+		return Array{}, err
+	}
+	first, last, steps := cInts(start), cInts(stop), cInts(strides)
+	return unaryOp(a, "mlx_slice", func(out *C.mlx_array, input C.mlx_array, stream C.mlx_stream) C.int {
+		return C.mlx_slice(out, input, cIntPtr(first), C.size_t(len(first)), cIntPtr(last), C.size_t(len(last)), cIntPtr(steps), C.size_t(len(steps)), stream)
+	})
+}
+
+// SliceUpdate returns a with the selected slice replaced; neither input is closed or mutated.
+func SliceUpdate(a, update Array, start, stop, strides []int) (Array, error) {
+	if err := validateSlice(a, start, stop, strides); err != nil {
+		return Array{}, err
+	}
+	first, last, steps := cInts(start), cInts(stop), cInts(strides)
+	return binaryOp(a, update, "mlx_slice_update", func(out *C.mlx_array, input, values C.mlx_array, stream C.mlx_stream) C.int {
+		return C.mlx_slice_update(out, input, values, cIntPtr(first), C.size_t(len(first)), cIntPtr(last), C.size_t(len(last)), cIntPtr(steps), C.size_t(len(steps)), stream)
+	})
+}
+
+func validateSlice(a Array, start, stop, strides []int) error {
+	if len(start) != len(stop) || len(start) != len(strides) {
+		return errors.New("mlxgo: slice index lengths must match")
+	}
+	if _, err := a.handleValue(); err != nil {
+		return err
+	}
+	if len(start) != len(a.Shape()) {
+		return errors.New("mlxgo: slice indices must match array rank")
+	}
+	for i := range start {
+		if strides[i] == 0 {
+			return errors.New("mlxgo: slice stride must not be zero")
+		}
+		for _, v := range []int{start[i], stop[i], strides[i]} {
+			if int64(v) < -1<<31 || int64(v) > 1<<31-1 {
+				return errors.New("mlxgo: slice index exceeds int32")
+			}
+		}
+	}
+	return nil
+}
+
 // CumsumAxis returns the inclusive forward cumulative sum along axis.
 func CumsumAxis(a Array, axis int) (Array, error) {
 	return unaryOp(a, "mlx_cumsum", func(out *C.mlx_array, input C.mlx_array, stream C.mlx_stream) C.int {
