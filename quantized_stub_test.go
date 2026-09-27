@@ -8,6 +8,9 @@ import (
 )
 
 func TestQuantizedStubs(t *testing.T) {
+	if _, err := MXFP4Matmul(Array{}, Array{}, Array{}); !errors.Is(err, errBuiltWithoutMLX) {
+		t.Fatal(err)
+	}
 	if _, err := GetMemoryUsage(); !errors.Is(err, errBuiltWithoutMLX) {
 		t.Fatal(err)
 	}

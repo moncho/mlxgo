@@ -71,7 +71,8 @@ BF16 rejection and eight concurrent sessions. Synthetic logit differences from
 decoded float32 were below `4.77e-7`. Additional group-isolation tests ensure an
 inactive group stays zero and lazy outputs survive closing the model. CI runs
 the model/group tests under the race detector. Real compressed-layer and
-packed-weight/quantized-cache combinations still require separate validation.
+packed-weight/quantized-cache combinations now have a separate
+[combined validation report](COMBINED_QUANTIZATION_VALIDATION.md).
 
 ## Whole-Attention Measurements
 

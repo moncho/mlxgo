@@ -157,6 +157,7 @@ func TestReleasedFP8OutputAttentionForward(t *testing.T) {
 }
 
 func testReleasedAttentionLayerOptions(t *testing.T, layer int, packed bool, fp8 fp8AttentionSelection) {
+	defer mlx.SetDefaultCPU()
 	dir, ref := readAttentionLayerReferenceMode(t, layer, packed)
 	for _, device := range []struct {
 		name string
@@ -181,6 +182,21 @@ func testReleasedAttentionLayerOptions(t *testing.T, layer int, packed bool, fp8
 			}
 			all := run(t, fresh(t), attentionInputs(0, ref.Tokens, model.config.Dim))
 			compareCacheAttention(t, "full prefill", all, ref.Full, packed, false)
+			t.Run("concurrent_sessions", func(t *testing.T) {
+				for i := 0; i < 8; i++ {
+					t.Run(fmt.Sprintf("session%d", i), func(t *testing.T) {
+						t.Parallel()
+						c := ref.Cases[0]
+						s := fresh(t)
+						got := run(t, s, attentionInputs(0, c.Prefill, model.config.Dim))
+						for pos := c.Prefill; pos < c.Prefill+2; pos++ {
+							got = append(got, run(t, s, attentionInputs(pos, 1, model.config.Dim))...)
+						}
+						compareCacheAttention(t, "concurrent cached", got, c.Output, packed, false)
+						checkCacheStorage(t, model.config, layer, s.layers[layer], packed)
+					})
+				}
+			})
 			for _, c := range ref.Cases {
 				t.Run(fmt.Sprintf("prefill_%d", c.Prefill), func(t *testing.T) {
 					s, other := fresh(t), fresh(t)
@@ -258,6 +274,19 @@ func testReleasedAttentionLayerOptions(t *testing.T, layer int, packed bool, fp8
 				testReleasedIndexSelection(t, model, ref, packed)
 			}
 		})
+	}
+}
+
+func TestReleasedCombinedAttention(t *testing.T) {
+	if os.Getenv("MLXGO_DEEPSEEK_QUANTIZED_CACHES") != "1" {
+		t.Skip("set MLXGO_DEEPSEEK_QUANTIZED_CACHES=1 with real references")
+	}
+	for _, layer := range []int{0, 2} {
+		for _, caches := range []bool{false, true} {
+			t.Run(fmt.Sprintf("layer%d/caches_%t", layer, caches), func(t *testing.T) {
+				testReleasedAttentionLayerOptions(t, layer, caches, fp8AttentionSelection{kv: true, qb: true, oa: true})
+			})
+		}
 	}
 }
 

@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// Model owns immutable parameters, with optional packed attention weights.
+// Model owns immutable parameters, with optional packed attention and expert weights.
 // Separate sessions may run from arbitrary goroutines. Close and native work
 // are serialized on the MLX worker.
 type Model struct {
@@ -18,6 +18,7 @@ type Model struct {
 	weights            map[string]mlx.Array
 	fp8Attention       map[string]*quant.FP8Linear
 	fp8AttentionOutput map[string][]*quant.FP8Linear
+	fp4Experts         map[string]*FP4Expert
 	closed             bool
 }
 
@@ -54,6 +55,12 @@ type ModelOptions struct {
 	// after the reference BF16 conversion; rounding-changing values are rejected.
 	// This does not quantize activations or replace wo_b. CPU can be much slower.
 	FP8AttentionOA map[int]FP8AttentionWeight
+	// FP4Experts replaces all three matrices for each selected routed/shared
+	// expert. Omit their w1/w2/w3 names from parameters. Dim and InterDim must
+	// be divisible by 32. Bytes are copied; no float32 duplicates are retained.
+	// Activations remain float32 and every expert is still evaluated, not sparse
+	// dispatch. Inference-only, opt-in; no automatic checkpoint conversion.
+	FP4Experts map[ExpertID]FP4ExpertWeights
 }
 
 // NewModelWithOptions retains the float32 parameters and copies explicitly
@@ -81,10 +88,27 @@ func NewModelWithOptions(c Config, parameters map[string]mlx.Array, options Mode
 			replacements[name] = weight
 		}
 	}
-	if len(parameters)+len(replacements) != len(shapes) {
-		return nil, fmt.Errorf("deepseek: expected %d parameters, got %d float32 and %d FP8", len(shapes), len(parameters), len(replacements))
+	expertParameters := make(map[string]string, 3*len(options.FP4Experts))
+	expertWeights := make(map[string]FP4ExpertWeights, len(options.FP4Experts))
+	for id, weight := range options.FP4Experts {
+		if id.Layer < 0 || id.Layer >= c.Layers || id.Index < -1 || id.Index >= c.Experts {
+			return nil, fmt.Errorf("deepseek: FP4 expert %+v outside model", id)
+		}
+		prefix := expertPrefix(id)
+		for _, part := range []string{"w1.weight", "w2.weight", "w3.weight"} {
+			name := prefix + part
+			if _, exists := parameters[name]; exists {
+				return nil, fmt.Errorf("deepseek: duplicate float32 and FP4 parameter %s", name)
+			}
+			expertParameters[name] = prefix
+		}
+		expertWeights[prefix] = weight
+	}
+	if len(parameters)+len(replacements)+len(expertParameters) != len(shapes) {
+		return nil, fmt.Errorf("deepseek: expected %d parameters, got %d float32, %d FP8 and %d FP4", len(shapes), len(parameters), len(replacements), len(expertParameters))
 	}
 	m = &Model{config: c, weights: make(map[string]mlx.Array, len(shapes)), fp8Attention: make(map[string]*quant.FP8Linear, len(replacements))}
+	m.fp4Experts = make(map[string]*FP4Expert, len(expertWeights))
 	err = mlx.Batch(func() error {
 		s := &scope{}
 		keys := make([]string, 0, len(shapes))
@@ -93,6 +117,16 @@ func NewModelWithOptions(c Config, parameters map[string]mlx.Array, options Mode
 		}
 		sort.Strings(keys)
 		for _, name := range keys {
+			if prefix, ok := expertParameters[name]; ok {
+				if m.fp4Experts[prefix] == nil {
+					e, err := NewFP4Expert(expertWeights[prefix], c.Dim, c.InterDim)
+					if err != nil {
+						return fmt.Errorf("%s: %w", prefix, err)
+					}
+					m.fp4Experts[prefix] = e
+				}
+				continue
+			}
 			if weight, ok := replacements[name]; ok {
 				if err := m.initFP8Attention(name, shapes[name], weight); err != nil {
 					return err
@@ -175,6 +209,12 @@ func (m *Model) Close() error {
 			}
 		}
 		m.fp8AttentionOutput = nil
+		for _, p := range m.fp4Experts {
+			if e := p.Close(); err == nil {
+				err = e
+			}
+		}
+		m.fp4Experts = nil
 		return err
 	})
 }
@@ -401,14 +441,18 @@ func (session *Session) block(s *scope, x, previous mlx.Array, layer int, shared
 	}
 	n := h.Shape()[1]
 	h = s.add(mlx.Reshape(h, []int{n, c.Dim}))
-	expert := func(name string) ExpertWeights {
-		return ExpertWeights{Gate: w[p+name+"w1.weight"], Up: w[p+name+"w3.weight"], Down: w[p+name+"w2.weight"]}
+	if len(session.model.fp4Experts) > 0 {
+		h = session.model.packedMoE(s, h, layer)
+	} else {
+		expert := func(name string) ExpertWeights {
+			return ExpertWeights{Gate: w[p+name+"w1.weight"], Up: w[p+name+"w3.weight"], Down: w[p+name+"w2.weight"]}
+		}
+		experts := make([]ExpertWeights, c.Experts)
+		for i := range experts {
+			experts[i] = expert(fmt.Sprintf("ffn.experts.%d.", i))
+		}
+		h = s.add(MoE(h, w[p+"ffn.gate.weight"], w[p+"ffn.gate.bias"], experts, expert("ffn.shared_experts."), c.Router, c.Limit))
 	}
-	experts := make([]ExpertWeights, c.Experts)
-	for i := range experts {
-		experts[i] = expert(fmt.Sprintf("ffn.experts.%d.", i))
-	}
-	h = s.add(MoE(h, w[p+"ffn.gate.weight"], w[p+"ffn.gate.bias"], experts, expert("ffn.shared_experts."), c.Router, c.Limit))
 	h = s.add(mlx.Reshape(h, []int{1, n, c.Dim}))
 	return s.add(HyperPost(h, x, post, comb)), ffnPre
 }

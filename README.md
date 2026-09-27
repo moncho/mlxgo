@@ -377,6 +377,9 @@ make finetune-mlp
   `ScaledDotProductAttention`, `MSELoss`, `LogSoftmaxAxis`,
   `SoftmaxCrossEntropyAxis`, `CrossEntropyAxis`
 - Optimizers/utilities: `SGD`, `SGDWithLearningRate`, `NewAdamW`, `CloseArrays`
+- Weight-only quantized matmul: `MXFP8Matmul`, `MXFP4Matmul` (packed UInt32
+  weights and UInt8 E8M0 scales; floating inputs). See the experimental
+  [DeepSeek adapters and validation](deepseek/README.md).
 
 ## Memory Profiling
 
@@ -386,6 +389,8 @@ the counters. `mlx.ResetPeakMemory()` resets the global peak statistic without
 freeing allocations; use it only during coordinated profiling, not within
 ordinary inference calls. The [packed attention report](deepseek/FP8_ATTENTION_VALIDATION.md)
 shows whole-attention timing and allocator measurements on real weight samples.
+The [combined quantization report](deepseek/COMBINED_QUANTIZATION_VALIDATION.md)
+and [FP4 expert report](deepseek/FP4_EXPERT_VALIDATION.md) cover the newer paths.
 
 ## Development Notes
 

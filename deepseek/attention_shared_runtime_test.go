@@ -79,6 +79,22 @@ func TestReleasedQuantizedSharedAttentionForward(t *testing.T) {
 }
 
 func testReleasedSharedAttentionMode(t *testing.T, packed bool) {
+	testReleasedSharedAttentionOptions(t, packed, fp8AttentionSelection{})
+}
+
+func TestReleasedCombinedSharedAttention(t *testing.T) {
+	if os.Getenv("MLXGO_DEEPSEEK_QUANTIZED_CACHES") != "1" {
+		t.Skip("set MLXGO_DEEPSEEK_QUANTIZED_CACHES=1 with real references")
+	}
+	for _, caches := range []bool{false, true} {
+		t.Run(fmt.Sprintf("caches_%t", caches), func(t *testing.T) {
+			testReleasedSharedAttentionOptions(t, caches, fp8AttentionSelection{kv: true, qb: true, oa: true})
+		})
+	}
+}
+
+func testReleasedSharedAttentionOptions(t *testing.T, packed bool, fp8 fp8AttentionSelection) {
+	defer mlx.SetDefaultCPU()
 	ownerDir, ownerRef, consumerDir, consumerRef := readSharedAttentionReferencesMode(t, packed)
 	for _, device := range []struct {
 		name string
@@ -94,17 +110,7 @@ func testReleasedSharedAttentionMode(t *testing.T, packed bool) {
 				dir string
 				ref attentionReference
 			}{{ownerDir, ownerRef}, {consumerDir, consumerRef}} {
-				for _, m := range part.ref.Tensors {
-					a, err := mlx.NewFloat32(loadAttentionTensor(t, part.dir, m), m.Shape)
-					if err != nil {
-						t.Fatal(err)
-					}
-					model.weights[m.Name] = a
-					data, err := a.Float32Data()
-					if err != nil || matrixSHA(data) != m.DecodedSHA {
-						t.Fatalf("native upload mismatch: %s: %v", m.Name, err)
-					}
-				}
+				loadSampleAttentionWeights(t, model, part.dir, part.ref, fp8)
 			}
 			fresh := func(t *testing.T) *Session {
 				s, err := model.NewSessionWithOptions(SessionOptions{QuantizedCaches: packed})

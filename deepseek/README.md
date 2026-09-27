@@ -4,7 +4,7 @@ This package runs a reduced, float32-activation DeepSeek-V4.1 text backbone with
 prefill and incremental cache paths. **It cannot load the released checkpoint,
 generate meaningful text with the included untrained weights, or fine-tune the
 released model.** Parameters default to float32, with optional packed attention
-weights supplied explicitly at construction. Engram is supported
+and expert weights supplied explicitly at construction. Engram is supported
 with prepared hash metadata and unquantized tables. Vision, DSpark, production
 quantization and pretrained tokenizer integration remain unsupported.
 
@@ -39,7 +39,11 @@ The adapter can also replace selected session `wkv`, `wq_b` and grouped `wo_a` p
 explicit model options, with [KV validation](FP8_ATTENTION_VALIDATION.md) and
 [query validation](FP8_QUERY_VALIDATION.md) and
 [grouped output/combined validation and profiling](FP8_OUTPUT_VALIDATION.md).
-Activation-quantized GEMM and packed FP4 expert execution remain unsupported.
+Packed attention weights and quantized caches now pass
+[combined real-layer validation](COMBINED_QUANTIZATION_VALIDATION.md), including
+compressed/shared attention. Opt-in [packed FP4 experts](FP4_EXPERT_VALIDATION.md)
+also execute through MLX's native weight-only kernel. Activation-quantized GEMM,
+efficient sparse expert dispatch and full released-checkpoint loading remain unsupported.
 Reproduce the report offline:
 
 ```sh
@@ -157,6 +161,42 @@ This reduces completed-cache payload sizes, not necessarily peak memory or
 latency: attention reconstructs full-width temporaries and still uses float32
 matmul. Real-weight results are numerically bounded, not bitwise upstream parity;
 see the [precision limits and measurements](QUANTIZED_CACHE_VALIDATION.md).
+
+### Packed Experts
+
+`quant.NewFP4Linear` provides a standalone row-scaled E2M1/E8M0 projection.
+`NewFP4Expert(weights, dim, interDim)` owns three such projections and exposes
+`Forward(x, routing, limit)`. Inputs remain float32, routing is applied before
+the down projection, and clipping matches `Expert`. Close returned arrays and
+the expert when finished. These are inference-only APIs.
+
+To select packed experts inside a model, omit all three float32 parameter names
+for each selected expert and supply raw checkpoint bytes explicitly:
+
+```go
+model, err := deepseek.NewModelWithOptions(config, parameters, deepseek.ModelOptions{
+    FP4Experts: map[deepseek.ExpertID]deepseek.FP4ExpertWeights{
+        {Layer: 0, Index: 0}: {
+            Gate: deepseek.FP4Weight{Data: w1Bytes, Scales: w1Scales},
+            Up:   deepseek.FP4Weight{Data: w3Bytes, Scales: w3Scales},
+            Down: deepseek.FP4Weight{Data: w2Bytes, Scales: w2Scales},
+        },
+    },
+})
+```
+
+Index `-1` selects `layers.N.ffn.shared_experts`; nonnegative indices select
+`layers.N.ffn.experts.I`. Gate/up shapes are `[InterDim, Dim]`, down is
+`[Dim, InterDim]`, and both dimensions must be divisible by 32. Two E2M1 values
+share each byte, low nibble first, with one E8M0 scale per row per 32 columns.
+This is not the compressed-cache FP4 format. Constructors copy caller bytes,
+reject duplicates/nonfinite weights, and retain no float32 weight duplicate.
+
+Packed experts may be mixed with float32 experts and FP8 attention options;
+cache quantization remains a separate session choice. Defaults, loader behavior
+and exported float32 bundles are unchanged. **The model still evaluates every
+expert and masks contributions.** Packed storage does not provide sparse
+dispatch, activation quantization, or full-size model feasibility by itself.
 
 Both DeepSeek and `qwen2.NewSession` implement `lm.Session`: `Step`, `Position`
 and `Close`. The same `lm.Greedy` decoder works with either architecture. Input
@@ -278,7 +318,7 @@ reference code introduce these requirements beyond memory capacity:
 | Sparse indexer | Float32 scoring, candidate filtering and sharing implemented; quantized scoring and optimized top-k remain |
 | Single-pass mHC | Complete block wiring implemented and compared through model logits |
 | Engram | Float32 remapping/hash/lookup/gating implemented; released tokenizer metadata, FP8 table loading and rounding remain |
-| Checkpoint storage | Indexed I/O, released text mapping and bounded CPU FP8/FP4 decoding/BF16 rounding tested; opt-in native FP8 `wkv`/`wq_b`/`wo_a` validated with a BF16-exactness guard for `wo_a`; full released checkpoint loading and packed FP4 expert execution remain unsupported |
+| Checkpoint storage | Indexed I/O, released text mapping and bounded CPU FP8/FP4 decoding/BF16 rounding tested; opt-in native FP8 attention and FP4 routed/shared experts validated; `wo_a` requires BF16-exact weights; full released checkpoint loading and efficient sparse expert dispatch remain unsupported |
 | Cache quantization | Opt-in packed sliding-window KV, compressed KV and index keys, plus quantized index queries; float32 activations and separate opt-in packed attention weights, no activation-quantized GEMM |
 | Text input/output | Official encoding rules and tokenizer integration; no assumption that the existing Qwen chat formatting applies |
 | Vision | DeepSeek-ViT, image processing, projection and vision-specific routing bias |

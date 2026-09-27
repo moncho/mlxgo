@@ -10,6 +10,15 @@ import (
 )
 
 func TestReleasedExpertForward(t *testing.T) {
+	testReleasedExpertForward(t, false)
+}
+
+func TestReleasedFP4ExpertForward(t *testing.T) {
+	testReleasedExpertForward(t, true)
+}
+
+func testReleasedExpertForward(t *testing.T, packed bool) {
+	defer mlx.SetDefaultCPU()
 	dir, ref := readExpertReference(t)
 	for _, device := range []struct {
 		name string
@@ -19,23 +28,34 @@ func TestReleasedExpertForward(t *testing.T) {
 			if err := device.set(); err != nil {
 				t.Fatal(err)
 			}
-			arrays := make([]mlx.Array, 3)
-			for i, m := range ref.Matrices {
-				a, err := mlx.NewFloat32(loadExpertMatrix(t, dir, m), []int{m.Rows, m.Cols})
-				arrays[i] = owned(t, a, err)
-				read, err := a.Float32Data()
-				if err != nil || matrixSHA(read) != m.DecodedSHA {
-					t.Fatalf("expert native upload changed: %v", err)
+			var run func(mlx.Array, mlx.Array, float32) (mlx.Array, error)
+			if packed {
+				p, err := NewFP4Expert(FP4ExpertWeights{Gate: loadPackedExpertWeight(t, dir, ref.Matrices[0]), Down: loadPackedExpertWeight(t, dir, ref.Matrices[1]), Up: loadPackedExpertWeight(t, dir, ref.Matrices[2])}, ref.Dim, ref.Inter)
+				if err != nil {
+					t.Fatal(err)
 				}
+				defer p.Close()
+				run = p.Forward
+			} else {
+				arrays := make([]mlx.Array, 3)
+				for i, m := range ref.Matrices {
+					a, err := mlx.NewFloat32(loadExpertMatrix(t, dir, m), []int{m.Rows, m.Cols})
+					arrays[i] = owned(t, a, err)
+					read, err := a.Float32Data()
+					if err != nil || matrixSHA(read) != m.DecodedSHA {
+						t.Fatalf("expert native upload changed: %v", err)
+					}
+				}
+				w := ExpertWeights{Gate: arrays[0], Down: arrays[1], Up: arrays[2]}
+				run = func(x, routing mlx.Array, limit float32) (mlx.Array, error) { return Expert(x, w, routing, limit) }
 			}
-			w := ExpertWeights{Gate: arrays[0], Down: arrays[1], Up: arrays[2]}
 			a, err := mlx.NewFloat32(expertInputs(ref.Dim), []int{6, ref.Dim})
 			x := owned(t, a, err)
 			for _, c := range ref.Cases {
 				t.Run(c.Name, func(t *testing.T) {
 					a, err := mlx.NewFloat32(c.Routing, []int{6, 1})
 					routing := owned(t, a, err)
-					a, err = Expert(x, w, routing, c.Limit)
+					a, err = run(x, routing, c.Limit)
 					y := owned(t, a, err)
 					got, err := y.Float32Data()
 					if err != nil || len(got) != len(c.Output) {

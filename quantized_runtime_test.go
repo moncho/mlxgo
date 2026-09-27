@@ -8,6 +8,15 @@ import (
 )
 
 func TestRuntimeMXFP8Matmul(t *testing.T) {
+	testRuntimeMXFloatMatmul(t, 8, MXFP8Matmul)
+}
+
+func TestRuntimeMXFP4Matmul(t *testing.T) {
+	testRuntimeMXFloatMatmul(t, 4, MXFP4Matmul)
+}
+
+func testRuntimeMXFloatMatmul(t *testing.T, bits int, matmul func(Array, Array, Array) (Array, error)) {
+	defer SetDefaultCPU()
 	for _, device := range []struct {
 		name string
 		set  func() error
@@ -16,11 +25,14 @@ func TestRuntimeMXFP8Matmul(t *testing.T) {
 			if err := device.set(); err != nil {
 				t.Fatal(err)
 			}
-			data := make([]byte, 32*32)
+			data := make([]byte, 32*32*bits/8)
 			for i := range data {
 				data[i] = 0x38
+				if bits == 4 {
+					data[i] = 0x22
+				}
 			}
-			bytes, err := NewUInt8(data, []int{32, 32})
+			bytes, err := NewUInt8(data, []int{32, 32 * bits / 8})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -45,7 +57,7 @@ func TestRuntimeMXFP8Matmul(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer x.Close()
-				y, err := MXFP8Matmul(x, w, s)
+				y, err := matmul(x, w, s)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -97,7 +109,7 @@ func TestRuntimeMXFP8Matmul(t *testing.T) {
 			}
 			defer badScales.Close()
 			for _, args := range [][3]Array{{Array{}, w, s}, {badRank, w, s}, {badDType, w, s}, {badWidth, w, s}, {x, bytes, s}, {x, w, badScales}, {x, w, Array{}}} {
-				if y, err := MXFP8Matmul(args[0], args[1], args[2]); err == nil {
+				if y, err := matmul(args[0], args[1], args[2]); err == nil {
 					y.Close()
 					t.Fatal("invalid argument accepted")
 				}
@@ -105,7 +117,7 @@ func TestRuntimeMXFP8Matmul(t *testing.T) {
 			if err := w.Close(); err != nil {
 				t.Fatal(err)
 			}
-			if y, err := MXFP8Matmul(x, w, s); err == nil {
+			if y, err := matmul(x, w, s); err == nil {
 				y.Close()
 				t.Fatal("closed weight accepted")
 			}

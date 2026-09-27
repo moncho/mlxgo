@@ -7,3 +7,9 @@ package mlx
 func MXFP8Matmul(x, w, scales Array) (Array, error) {
 	return Array{}, errBuiltWithoutMLX
 }
+
+// MXFP4Matmul computes x @ w.T using packed E2M1 weights and E8M0 scales.
+// Native execution requires the mlx build tag.
+func MXFP4Matmul(x, w, scales Array) (Array, error) {
+	return Array{}, errBuiltWithoutMLX
+}

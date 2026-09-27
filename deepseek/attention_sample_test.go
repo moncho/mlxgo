@@ -246,7 +246,7 @@ func readSharedAttentionReferences(t *testing.T) (string, attentionReference, st
 	return readSharedAttentionReferencesMode(t, false)
 }
 
-func readSharedAttentionReferencesMode(t *testing.T, packed bool) (string, attentionReference, string, attentionReference) {
+func readSharedAttentionReferencesMode(t testing.TB, packed bool) (string, attentionReference, string, attentionReference) {
 	t.Helper()
 	dir, consumer := readAttentionLayerReferenceMode(t, 3, packed)
 	if os.Getenv("MLXGO_DEEPSEEK_COMPRESSED_ATTENTION_DIR") == "" {

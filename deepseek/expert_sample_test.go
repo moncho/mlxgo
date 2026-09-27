@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/moncho/mlxgo/deepseek/quant"
@@ -44,7 +45,7 @@ type expertReference struct {
 	Cases       []expertCaseReference   `json:"cases"`
 }
 
-func readExpertReference(t *testing.T) (string, expertReference) {
+func readExpertReference(t testing.TB) (string, expertReference) {
 	t.Helper()
 	dir := os.Getenv("MLXGO_DEEPSEEK_EXPERT_DIR")
 	if dir == "" {
@@ -123,7 +124,7 @@ func matrixSHA(values []float32) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-func loadExpertMatrix(t *testing.T, dir string, m expertMatrixReference) []float32 {
+func loadExpertMatrix(t testing.TB, dir string, m expertMatrixReference) []float32 {
 	t.Helper()
 	d, err := os.Open(filepath.Join(dir, m.Name+".weight.bin"))
 	if err != nil {
@@ -144,6 +145,25 @@ func loadExpertMatrix(t *testing.T, dir string, m expertMatrixReference) []float
 		t.Fatal("expert matrix checksum mismatch")
 	}
 	return data
+}
+
+func loadPackedExpertWeight(t testing.TB, dir string, m expertMatrixReference) FP4Weight {
+	t.Helper()
+	read := func(name string, n int, hash string) []byte {
+		f, err := os.Open(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		b, err := io.ReadAll(io.LimitReader(f, int64(n)+1))
+		h := sha256.Sum256(b)
+		if err != nil || len(b) != n || hex.EncodeToString(h[:]) != hash {
+			t.Fatalf("invalid packed expert %s: %v", name, err)
+		}
+		return b
+	}
+	name := strings.TrimSuffix(m.Name, ".weight")
+	return FP4Weight{Data: read(name+".weight.bin", m.Rows*m.Cols/2, m.DataSHA), Scales: read(name+".scale.bin", m.Rows*m.Cols/32, m.ScalesSHA)}
 }
 
 func expertInputs(dim int) []float32 {

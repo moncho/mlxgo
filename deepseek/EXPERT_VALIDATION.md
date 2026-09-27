@@ -4,6 +4,10 @@ Layer 0, expert 0 from DeepSeek-V4.1-Flash now runs through `deepseek.Expert`
 using all three real weight matrices, decoded into float32. This is one
 pretrained component, not a complete pretrained model or a quantized-kernel test.
 
+The subsequent [packed FP4 report](FP4_EXPERT_VALIDATION.md) validates native
+weight-only execution against this same oracle without decoded weight copies.
+The float32 results below remain the original component milestone.
+
 ## Reproduce
 
 From the repository root, after the initial projection samples have been fetched:

@@ -22,6 +22,19 @@ import (
 // The output has shape [M,N] and x's dtype. Floating-point accumulation and
 // exceptional-value handling follow MLX, not the CPU reference decoder.
 func MXFP8Matmul(x, w, scales Array) (Array, error) {
+	return mxFloatMatmul(x, w, scales, 8)
+}
+
+// MXFP4Matmul computes x @ w.T without quantizing x. x is Float32, Float16
+// or BFloat16 [M,K]; w is UInt32 [N,K/8], eight E2M1 nibbles per word,
+// first in the low nibble. scales is UInt8 [N,K/32] with E8M0 scale codes.
+// N and K must be positive multiples of 32 and M positive. The output is
+// [M,N] with x's dtype. Accumulation and underflow follow MLX.
+func MXFP4Matmul(x, w, scales Array) (Array, error) {
+	return mxFloatMatmul(x, w, scales, 4)
+}
+
+func mxFloatMatmul(x, w, scales Array, bits int) (Array, error) {
 	return withCurrentStreamValue(func(s C.mlx_stream) (Array, error) {
 		xh, err := x.handleValue()
 		if err != nil {
@@ -36,8 +49,8 @@ func MXFP8Matmul(x, w, scales Array) (Array, error) {
 			return Array{}, err
 		}
 		xs, ws, ss := x.Shape(), w.Shape(), scales.Shape()
-		if len(xs) != 2 || len(ws) != 2 || len(ss) != 2 || xs[0] <= 0 || xs[1] <= 0 || xs[1]%32 != 0 || ws[0] <= 0 || ws[0]%32 != 0 || ws[1] != xs[1]/4 || ss[0] != ws[0] || ss[1] != xs[1]/32 {
-			return Array{}, fmt.Errorf("mlxgo: invalid MXFP8 shapes x=%v w=%v scales=%v", xs, ws, ss)
+		if len(xs) != 2 || len(ws) != 2 || len(ss) != 2 || xs[0] <= 0 || xs[1] <= 0 || xs[1]%32 != 0 || ws[0] <= 0 || ws[0]%32 != 0 || ws[1] != xs[1]/(32/bits) || ss[0] != ws[0] || ss[1] != xs[1]/32 {
+			return Array{}, fmt.Errorf("mlxgo: invalid MXFP%d shapes x=%v w=%v scales=%v", bits, xs, ws, ss)
 		}
 		xt, err := x.DType()
 		if err != nil {
@@ -52,13 +65,13 @@ func MXFP8Matmul(x, w, scales Array) (Array, error) {
 			return Array{}, err
 		}
 		if (xt != Float32 && xt != Float16 && xt != BFloat16) || wt != UInt32 || st != UInt8 {
-			return Array{}, fmt.Errorf("mlxgo: MXFP8 requires floating x, UInt32 w and UInt8 scales")
+			return Array{}, fmt.Errorf("mlxgo: MXFP%d requires floating x, UInt32 w and UInt8 scales", bits)
 		}
-		mode := C.CString("mxfp8")
+		mode := C.CString(fmt.Sprintf("mxfp%d", bits))
 		defer C.free(unsafe.Pointer(mode))
 		out := newArray(C.mlx_array_new())
 		clearMLXError()
-		if code := C.mlx_quantized_matmul(out.outHandle(), xh, wh, sh, C.mlx_array{}, true, C.mlx_optional_int{value: 32, has_value: true}, C.mlx_optional_int{value: 8, has_value: true}, mode, s); code != 0 {
+		if code := C.mlx_quantized_matmul(out.outHandle(), xh, wh, sh, C.mlx_array{}, true, C.mlx_optional_int{value: 32, has_value: true}, C.mlx_optional_int{value: C.int(bits), has_value: true}, mode, s); code != 0 {
 			return closeArrayAfterError(out, mlxError("mlx_quantized_matmul", int(code)))
 		}
 		return out, nil

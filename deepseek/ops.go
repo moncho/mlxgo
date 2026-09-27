@@ -211,13 +211,17 @@ func expert(s *scope, x mlx.Array, w ExpertWeights, routing mlx.Array, limit flo
 		return mlx.Array{}
 	}
 	gate, up := s.linear(x, w.Gate), s.linear(x, w.Up)
+	return s.linear(expertActivation(s, gate, up, routing, limit), w.Down)
+}
+
+func expertActivation(s *scope, gate, up, routing mlx.Array, limit float32) mlx.Array {
 	if limit > 0 {
 		gate = s.add(mlx.Minimum(gate, s.scalar(limit)))
 		up = s.add(mlx.Clip(up, s.scalar(-limit), s.scalar(limit)))
 	}
 	h := s.add(mlx.Multiply(s.add(mlx.SiLU(gate)), up))
 	h = s.add(mlx.Multiply(h, routing))
-	return s.linear(h, w.Down)
+	return h
 }
 
 // MoE computes routed plus shared experts for x [tokens,dim]. It deliberately

@@ -55,7 +55,9 @@ independent ownership, close behavior, malformed/duplicate inputs and eight
 concurrent sessions. Synthetic logit differences from decoded float32 models
 were below `3.58e-7`. CI's existing `TestFP8Model` race checks cover all modes.
 Real combined packed-weight/quantized-cache and compressed-layer validation
-are still separate work; synthetic coverage does not establish those claims.
+was not covered by this milestone. These combinations now have a separate
+[combined validation report](COMBINED_QUANTIZATION_VALIDATION.md); synthetic
+coverage alone does not establish those real-weight claims.
 
 ## Whole-Attention Measurements
 

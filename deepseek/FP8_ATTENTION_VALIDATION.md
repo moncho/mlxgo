@@ -44,7 +44,9 @@ race detector. These synthetic tests check integration, not pretrained quality.
 
 Real validation in this milestone covers layer 0 with float32 caches. Combining
 real packed projections with real quantized caches, compressed-attention layers,
-and other FP8 projections needs separate validation before parity claims.
+and other FP8 projections was not covered by this milestone. Subsequent
+[combined validation](COMBINED_QUANTIZATION_VALIDATION.md) covers those cache
+and compressed/shared attention combinations without changing these results.
 
 ## Whole-Attention Benchmark
 
@@ -120,6 +122,6 @@ profiling with other MLX users and evaluate work before reading counters.
 The subsequent [query projection report](FP8_QUERY_VALIDATION.md) validates
 packed `wq_b` independently and together with `wkv`. The numbers above remain
 the original KV-only measurements. The [grouped output report](FP8_OUTPUT_VALIDATION.md)
-separately validates `wo_a` with a BF16-exactness guard. Packed FP4 experts still
-need separate validation; do not infer their correctness or performance from
-these replaced matrices.
+separately validates `wo_a` with a BF16-exactness guard. Packed FP4 experts have
+their own [validation report](FP4_EXPERT_VALIDATION.md); do not infer their
+correctness or performance from these replaced matrices.

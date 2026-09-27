@@ -1,8 +1,8 @@
 # Bounded Quantization References
 
 `deepseek/quant` provides pure-Go CPU weight decoding and activation/cache
-quantization references, lazy MLX activation quantization graphs, and an
-experimental native packed FP8 projection for the
+quantization references, lazy MLX activation quantization graphs, and
+experimental native packed FP8/FP4 projections for the
 [audited layouts](../CHECKPOINT_AUDIT.md).
 It does not load checkpoints or download weights. The released DeepSeek model is still unsupported by
 `inference.Open`.
@@ -45,6 +45,20 @@ The [real-weight validation and benchmark report](FP8_LINEAR_VALIDATION.md)
 includes reproduction commands. Packed payload is 3.88x smaller than float32.
 On the tested M3 Pro, small GPU batches are faster, but CPU execution is much
 slower. These results do not justify enabling it automatically.
+
+## Packed FP4 Projection
+
+`NewFP4Linear(data, scales, rows, cols)` accepts the `FP4Row32` layout: E2M1
+low nibble first, E8M0 row/group32 scales, positive dimensions divisible by 32.
+It copies packed buffers, validates finite decoded values in bounded chunks,
+and uses `mlx.MXFP4Matmul` without a decoded weight copy. `Forward` accepts
+Float32 `[tokens,cols]`; close the owned output and layer. Copies share handles,
+concurrent calls serialize on the worker, and previously built outputs survive
+layer close. Native accumulation/underflow follow MLX.
+
+See [FP4 expert validation and profiling](../FP4_EXPERT_VALIDATION.md) for real
+projection/expert checks and explicit model integration. This is inference-only,
+not activation quantization or DeepSeek's FP4-to-FP8 execution pipeline.
 
 ## Activation and Cache Quantization
 
