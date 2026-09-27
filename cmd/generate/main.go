@@ -11,12 +11,14 @@ import (
 
 	"github.com/moncho/mlxgo"
 	"github.com/moncho/mlxgo/inference"
+	"github.com/moncho/mlxgo/lm"
 )
 
 type options struct {
 	dir, prompt, adapters, device string
 	maxTokens                     int
 	tokens                        []int32
+	sampling                      lm.SamplingOptions
 }
 
 func parse(args []string) (options, error) {
@@ -27,6 +29,10 @@ func parse(args []string) (options, error) {
 	f.StringVar(&o.adapters, "adapters", "", "optional mlxgo LoRA safetensors")
 	f.StringVar(&o.device, "device", "gpu", "cpu or gpu")
 	f.IntVar(&o.maxTokens, "max-tokens", 64, "maximum generated tokens")
+	var temperature, topP float64
+	f.Float64Var(&temperature, "temperature", 0, "sampling temperature (0 is greedy)")
+	f.Float64Var(&topP, "top-p", 0, "nucleus probability (0 or 1 disables)")
+	f.Uint64Var(&o.sampling.Seed, "seed", 0, "MLX random seed")
 	var raw string
 	f.StringVar(&raw, "tokens", "", "raw prompt token IDs, comma-separated (instead of -prompt)")
 	if err := f.Parse(args); err != nil {
@@ -34,6 +40,13 @@ func parse(args []string) (options, error) {
 	}
 	if f.NArg() != 0 {
 		return o, fmt.Errorf("unexpected positional arguments")
+	}
+	o.sampling.Temperature, o.sampling.TopP = float32(temperature), float32(topP)
+	if err := o.sampling.Validate(); err != nil {
+		return o, err
+	}
+	if topP < 0 || topP > 1 || temperature < 0 {
+		return o, fmt.Errorf("invalid sampling options")
 	}
 	if o.maxTokens <= 0 {
 		return o, fmt.Errorf("max-tokens must be positive")
@@ -50,6 +63,15 @@ func parse(args []string) (options, error) {
 			hasPrompt = true
 		}
 	})
+	var hasTopP bool
+	f.Visit(func(v *flag.Flag) {
+		if v.Name == "top-p" {
+			hasTopP = true
+		}
+	})
+	if hasTopP && o.sampling.Temperature == 0 {
+		return o, fmt.Errorf("top-p requires a positive temperature")
+	}
 	if hasTokens && hasPrompt {
 		return o, fmt.Errorf("use either -tokens or -prompt")
 	}
@@ -88,9 +110,9 @@ func run(o options, output io.Writer) error {
 	defer m.Close()
 	var r inference.Result
 	if o.tokens != nil {
-		r, err = m.GenerateTokens(o.tokens, o.maxTokens)
+		r, err = m.GenerateTokensWith(o.tokens, o.maxTokens, o.sampling)
 	} else {
-		r, err = m.Generate(o.prompt, o.maxTokens)
+		r, err = m.GenerateWith(o.prompt, o.maxTokens, o.sampling)
 	}
 	if err != nil {
 		return err

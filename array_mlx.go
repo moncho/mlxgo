@@ -596,6 +596,13 @@ func Sum(a Array, keepdims bool) (Array, error) {
 	})
 }
 
+// CumsumAxis returns the inclusive forward cumulative sum along axis.
+func CumsumAxis(a Array, axis int) (Array, error) {
+	return unaryOp(a, "mlx_cumsum", func(out *C.mlx_array, input C.mlx_array, stream C.mlx_stream) C.int {
+		return C.mlx_cumsum(out, input, C.int(axis), false, true, stream)
+	})
+}
+
 // SumAxis reduces a along one axis.
 func SumAxis(a Array, axis int, keepdims bool) (Array, error) {
 	return unaryOp(a, "mlx_sum_axis", func(out *C.mlx_array, input C.mlx_array, stream C.mlx_stream) C.int {

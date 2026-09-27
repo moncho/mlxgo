@@ -41,6 +41,28 @@ func TestRuntimeArrayOps(t *testing.T) {
 	assertFloat32Data(t, div, []float32{10, 10, 10, 10})
 }
 
+func TestRuntimeCumsumAxis(t *testing.T) {
+	for _, device := range []DeviceType{DeviceCPU, DeviceGPU} {
+		if err := SetDefaultDevice(device, 0); err != nil {
+			t.Fatal(err)
+		}
+		a := mustNewFloat32(t, []float32{1, 2, 3, 4, 5, 6}, []int{2, 3})
+		for axis, want := range map[int][]float32{-1: {1, 3, 6, 4, 9, 15}, 0: {1, 2, 3, 5, 7, 9}} {
+			out, err := CumsumAxis(a, axis)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertFloat32Data(t, out, want)
+			out.Close()
+		}
+		if out, err := CumsumAxis(a, 2); err == nil {
+			out.Close()
+			t.Fatal("accepted invalid axis")
+		}
+		a.Close()
+	}
+}
+
 func TestRuntimeMatmulReshapeAndReductions(t *testing.T) {
 	if err := SetDefaultCPU(); err != nil {
 		t.Fatal(err)

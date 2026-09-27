@@ -97,6 +97,14 @@ generation budget must fit the context, allowing for the last generated token
 not yet having been consumed. Timing fields measure forward passes, including
 worker queue time, not end-to-end decoding throughput.
 
+`GenerateWith(prompt, count, lm.SamplingOptions{Temperature: 0.8, TopP: 0.9, Seed: 42})`
+and `GenerateTokensWith(ids, count, options, stopIDs...)` enable sampling.
+Zero temperature follows the identical greedy path; top-p 0 or 1 disables
+nucleus filtering. Invalid options return errors, not clamped values. Sampling
+reseeds MLX's global random generator before the first step, so reproducibility
+requires that other callers do not interleave random operations.
+The CLI exposes `-temperature`, `-top-p`, and `-seed`, all defaulting to zero.
+
 For incremental use, call `NewSession`, `Step`, `Position`, and `Close` through
 `lm.Session`. Returned logits are caller-owned `[1,1,vocab]` arrays. DeepSeek
 accepts a multi-token prefill and then one token per step. Use independent

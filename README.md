@@ -147,7 +147,13 @@ go run -tags mlx ./cmd/generate -prompt "Explain why the sky is blue in one sent
 
 Generation runs entirely in Go through MLX, with GPU by default and optional
 CPU selection. It uses the Qwen chat
-template, greedy decoding, tied embeddings, and a concatenating KV cache.
+template, greedy decoding by default, tied embeddings, and a concatenating KV cache.
+For sampling, add `-temperature 0.8 -top-p 0.9 -seed 42`. Temperature zero
+preserves greedy decoding; top-p 0 or 1 disables nucleus filtering. The CLI
+requires a positive temperature when top-p is supplied. `lm.Sample`,
+`inference.Model.GenerateWith`, and `GenerateTokensWith` accept
+`lm.SamplingOptions`. Sampling seeds MLX's global RNG; reproducibility assumes
+no interleaved random operations from other callers.
 Only the standard Qwen2 architecture with SiLU, full attention, unscaled RoPE,
 tied embeddings, zero dropout, and bf16 safetensors weights is supported.
 Weights can be a single file or an indexed set of shards; see the
@@ -366,7 +372,7 @@ make finetune-mlp
   `Sqrt`, `Sigmoid`, `Tanh`, `Sin`, `Cos`, `ReLU`, `StopGradient`
 - Matrix/reduction ops: `Matmul`, `Sum`, `SumAxis`, `SumAxes`, `Mean`,
   `MeanAxis`, `MeanAxes`, `LogSumExp`, `LogSumExpAxis`, `LogSumExpAxes`,
-  `AddMM`
+  `AddMM`, `CumsumAxis`
 - Device/stream control: `SetDefaultGPU`, `SetDefaultCPU`, `SetDefaultDevice`,
   `Batch`
 - Shape/type ops: `Reshape`, `Transpose`, `TransposeAxes`, `BroadcastTo`,

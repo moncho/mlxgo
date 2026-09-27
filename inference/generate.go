@@ -20,6 +20,14 @@ type Result struct {
 // Generate uses the selected architecture's text encoding and a common greedy
 // decoder. Qwen EOS tokens are omitted from Result.Tokens and Text.
 func (m *Model) Generate(prompt string, maxTokens int) (Result, error) {
+	return m.GenerateWith(prompt, maxTokens, lm.SamplingOptions{})
+}
+
+// GenerateWith generates text with optional temperature and nucleus sampling.
+func (m *Model) GenerateWith(prompt string, maxTokens int, o lm.SamplingOptions) (Result, error) {
+	if err := o.Validate(); err != nil {
+		return Result{}, err
+	}
 	if m == nil {
 		return Result{}, ErrClosed
 	}
@@ -30,7 +38,7 @@ func (m *Model) Generate(prompt string, maxTokens int) (Result, error) {
 		return Result{}, fmt.Errorf("inference: max tokens must be positive")
 	}
 	ids := m.encode(prompt)
-	r, err := m.generate(ids, maxTokens, m.eos)
+	r, err := m.generate(ids, maxTokens, o, m.eos)
 	if err != nil {
 		return r, err
 	}
@@ -49,10 +57,18 @@ func (m *Model) Generate(prompt string, maxTokens int) (Result, error) {
 // GenerateTokens works for every supported architecture without a tokenizer.
 // Returned tokens include any matching stop token. No text is decoded.
 func (m *Model) GenerateTokens(prompt []int32, maxTokens int, stop ...int32) (Result, error) {
-	return m.generate(prompt, maxTokens, stop)
+	return m.GenerateTokensWith(prompt, maxTokens, lm.SamplingOptions{}, stop...)
 }
 
-func (m *Model) generate(prompt []int32, maxTokens int, stop []int32) (r Result, err error) {
+// GenerateTokensWith samples raw IDs, including a matching stop token.
+func (m *Model) GenerateTokensWith(prompt []int32, maxTokens int, o lm.SamplingOptions, stop ...int32) (Result, error) {
+	return m.generate(prompt, maxTokens, o, stop)
+}
+
+func (m *Model) generate(prompt []int32, maxTokens int, o lm.SamplingOptions, stop []int32) (r Result, err error) {
+	if err := o.Validate(); err != nil {
+		return r, err
+	}
 	if m == nil {
 		return r, ErrClosed
 	}
@@ -74,7 +90,7 @@ func (m *Model) generate(prompt []int32, maxTokens int, stop []int32) (r Result,
 	defer s.Close()
 	r.PrefillTokens = len(prompt)
 	timed := &timedSession{Session: s, result: &r}
-	r.Tokens, err = lm.Greedy(timed, prompt, maxTokens, stop...)
+	r.Tokens, err = lm.Sample(timed, prompt, maxTokens, o, stop...)
 	return r, err
 }
 

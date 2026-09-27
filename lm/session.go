@@ -22,6 +22,10 @@ type Session interface {
 // an existing session, which remains caller-owned; tokenization is external.
 // The last returned token has not been consumed by the session.
 func Greedy(s Session, prompt []int32, count int, eos ...int32) ([]int32, error) {
+	return decode(s, prompt, count, greedyPick, eos...)
+}
+
+func decode(s Session, prompt []int32, count int, pick func(mlx.Array) (int32, error), eos ...int32) ([]int32, error) {
 	if s == nil || len(prompt) == 0 || count < 0 {
 		return nil, fmt.Errorf("lm: nonempty prompt, session and nonnegative count required")
 	}
@@ -40,25 +44,11 @@ func Greedy(s Session, prompt []int32, count int, eos ...int32) ([]int32, error)
 			logits.Close()
 			return nil, fmt.Errorf("lm: expected logits [1,1,vocabulary], got %v", shape)
 		}
-		best, err := mlx.ArgmaxAxis(logits, -1, false)
+		token, err := pick(logits)
 		logits.Close()
 		if err != nil {
 			return nil, err
 		}
-		ids, err := mlx.AsType(best, mlx.Int32)
-		best.Close()
-		if err != nil {
-			return nil, err
-		}
-		data, err := ids.Int32Data()
-		ids.Close()
-		if err != nil {
-			return nil, err
-		}
-		if len(data) != 1 {
-			return nil, fmt.Errorf("lm: expected one token")
-		}
-		token := data[0]
 		result = append(result, token)
 		for _, stop := range eos {
 			if token == stop {
@@ -68,4 +58,29 @@ func Greedy(s Session, prompt []int32, count int, eos ...int32) ([]int32, error)
 		input = []int32{token}
 	}
 	return result, nil
+}
+
+func greedyPick(logits mlx.Array) (int32, error) {
+	best, err := mlx.ArgmaxAxis(logits, -1, false)
+	if err != nil {
+		return 0, err
+	}
+	defer best.Close()
+	return tokenID(best)
+}
+
+func tokenID(a mlx.Array) (int32, error) {
+	ids, err := mlx.AsType(a, mlx.Int32)
+	if err != nil {
+		return 0, err
+	}
+	defer ids.Close()
+	data, err := ids.Int32Data()
+	if err != nil {
+		return 0, err
+	}
+	if len(data) != 1 {
+		return 0, fmt.Errorf("lm: expected one token")
+	}
+	return data[0], nil
 }

@@ -236,6 +236,8 @@ func Sum(_ Array, _ bool) (Array, error) {
 	return Array{}, errBuiltWithoutMLX
 }
 
+func CumsumAxis(_ Array, _ int) (Array, error) { return Array{}, errBuiltWithoutMLX }
+
 func SumAxis(_ Array, _ int, _ bool) (Array, error) {
 	return Array{}, errBuiltWithoutMLX
 }
