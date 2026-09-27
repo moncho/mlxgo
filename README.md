@@ -1,5 +1,41 @@
 # MLX From Go
 
+## Quickstart
+
+On an Apple Silicon Mac with Go and the Hugging Face CLI (`hf`) installed,
+run from this repository's root:
+
+```sh
+brew install mlx-c
+hf download Qwen/Qwen2.5-0.5B-Instruct config.json model.safetensors tokenizer.json tokenizer_config.json \
+  --revision 7ae557604adf67be50417f59c2c2f167def9a775 \
+  --local-dir models/Qwen2.5-0.5B-Instruct
+go run -tags mlx ./cmd/generate -prompt "Explain why the sky is blue in one sentence."
+```
+
+Or use the same downloaded model from Go (build with `-tags mlx`):
+
+```go
+import (
+    "fmt"
+    mlx "github.com/moncho/mlxgo"
+    "github.com/moncho/mlxgo/inference"
+)
+
+func generate() error {
+    if err := mlx.SetDefaultGPU(); err != nil { return err }
+    model, err := inference.Open("models/Qwen2.5-0.5B-Instruct", inference.Options{})
+    if err != nil { return err }
+    defer model.Close()
+    result, err := model.Generate("Explain why the sky is blue.", 64)
+    if err != nil { return err }
+    fmt.Println(result.Text)
+    return nil
+}
+```
+
+## Overview
+
 Go bindings for Apple's MLX through the official MLX C bridge, with array,
 autograd and optimizer APIs, Qwen2.5-0.5B inference, and LoRA fine-tuning.
 The higher-level model packages are experimental and deliberately narrow.
@@ -238,114 +274,8 @@ are not full optimizer checkpoints.
 Models, caches, adapters and optimizers must not be mutated or closed while in
 use. A cache belongs to one generation, and must be discarded after an error.
 
-### Resumable Training
-
-Save a full checkpoint at completed optimizer steps, then resume in a new process:
-
-```sh
-go run -tags mlx ./cmd/finetune-qwen -steps 20 \
-  -checkpoint checkpoints/training.safetensors -checkpoint-every 5
-go run -tags mlx ./cmd/finetune-qwen -steps 10 \
-  -resume checkpoints/training.safetensors \
-  -checkpoint checkpoints/training.safetensors -checkpoint-every 5
-```
-
-`-steps` always means **additional** steps; the second command ends at step 30.
-Reported step numbers are absolute. Keep rank, learning rate, gradient limit,
-batch size, and training data the same when resuming. Checkpoints also bind
-weight decay, seed, model configuration, base-weight SHA256, and the ordered
-tokenized inputs/targets/loss masks. A changed dataset or training setting fails
-before replacing adapter parameters. Validation data is not part of training
-state and may differ. CLI validation loss is compared to the fresh base model,
-including on resumed runs, and adapter export/reload is still verified.
-
-The full file stores adapters, float32 AdamW first/second moments, completed
-step count, current permutation/cursor/epoch, and seed. `-out` remains a separate
-adapter-only inference export; it cannot share a path with the training file.
-The same `-resume` and `-checkpoint` path is allowed. `-checkpoint-every 0`
-(default) saves only after the final step; periodic saves also always save the
-final step. Set `-checkpoint` explicitly to enable saving. An interruption loses
-only work since the last completed save; resume from that file after an error.
-
-Writes use a temporary file in the destination directory, flush it, then rename
-over the destination. A failed pre-rename write leaves the previous checkpoint
-intact. This is atomic replacement, not a backup or a guarantee against power
-loss. Save errors are reported after the completed step; in-memory parameters
-have already advanced. Abrupt process termination may leave a temporary file.
-
-The library uses `TrainOptions.ResumeFrom`, `CheckpointPath`, and
-`CheckpointEvery`. `mlx.AdamW.State` and `mlx.NewAdamWFromState` expose owned
-optimizer snapshots for other models. Do not mutate training data, adapters,
-or optimizer state while training or saving. Checkpoint files should be trusted.
-
-To preserve the existing sampling sequence, resume replays past Go `math/rand`
-permutations from the saved seed, checks the saved permutation, then restores
-the cursor. No gradient steps are replayed; shuffle replay costs O(previous
-epochs * dataset size). The format currently requires the same Go version.
-Bitwise continuation is tested separately on CPU and GPU on the same software
-and device; numerical identity across MLX versions or devices is not promised.
-
-Real-checkpoint verification on Qwen2.5-0.5B compared six uninterrupted steps
-with three steps plus a fresh-process three-step resume: all 288 adapter and
-moment tensors were bit-identical, metadata matched, and both validation losses
-were 0.729367. To compare your own two full training artifacts:
-
-```sh
-MLXGO_CHECKPOINT_FULL=checkpoints/full.safetensors \
-MLXGO_CHECKPOINT_RESUMED=checkpoints/resumed.safetensors \
-  go test -tags "mlx mlxruntime" ./qwen2 -run TestTrainingCheckpointFilesEqual -v
-```
-
-### Extraction Benchmark
-
-The [ticket extraction benchmark](benchmarks/tickets/README.md) compares the
-base model with trained adapters on held-out support-ticket wording. It includes
-192 training, 48 validation, and 96 test examples, plus eight unrelated retention
-prompts. Reports contain every prediction, strict JSON/schema and field scores,
-timings, process peak RSS, and checkpoint/dataset hashes. The data is synthetic;
-this is a reproducible application-shaped experiment, not a real-world accuracy
-claim. Run `go run ./cmd/bench-qwen -mode prepare` without MLX to recreate the data.
-
-### Reference Verification
-
-CI runs 119 Hugging Face tokenizer cases, small-transformer cache comparisons,
-LoRA finite-difference gradients, learning/frozen-weight/checkpoint tests, and
-AdamW checks against a scalar reference. It never downloads model weights.
-
-The real-checkpoint tests are opt-in:
-
-```sh
-MLXGO_QWEN2_DIR="$PWD/models/Qwen2.5-0.5B-Instruct" \
-  go test -tags "mlx mlxruntime" ./qwen2 -run TestQwenGolden -v
-MLXGO_QWEN2_DIR="$PWD/models/Qwen2.5-0.5B-Instruct" MLXGO_QWEN2_MEMORY=1 \
-  go test -tags "mlx mlxruntime" ./qwen2 -run TestQwenMemory -v
-```
-
-Golden verification requires all 32 reference tokens to match and maximum
-absolute prefill-logit error of at most 0.25. These limits are fixed in the
-test, not chosen from the Go output. The memory test warms up for 200 tokens,
-then checks retained RSS after two more 200-token runs against a 64 MiB growth
-limit. This detects regression in retained memory, not all possible leaks.
-
-Fixtures were generated with the pinned versions in
-`qwen2/requirements-reference.txt`, using the upstream
-[mlx-lm Qwen2 model](https://github.com/ml-explore/mlx-lm/blob/main/mlx_lm/models/qwen2.py)
-and its built-in `ConcatenateKVCache`. The model uses fused bias projections
-and compiled SwiGLU to match reference bf16 rounding. Different MLX versions,
-kernel choices, or cache layouts can change greedy decisions near tied logits.
-The C++ attention shim supports both mlx-c 0.6.0 and the newer `force_fused`
-signature without a version-dependent function-pointer cast.
-
-To deliberately regenerate fixtures on a Metal-capable Mac:
-
-```sh
-python3.12 -m venv .venv-qwen
-.venv-qwen/bin/pip install -r qwen2/requirements-reference.txt
-.venv-qwen/bin/python qwen2/make_fixture.py
-```
-
-The checked-in tokenizer vocabulary is a reduced fixture for the reference
-corpus; applications must load the full tokenizer from the model directory.
+See [resumable training and the extraction benchmark](docs/training.md) and
+[reference verification](docs/verification.md) for the detailed workflows.
 
 ## Test
 
