@@ -506,3 +506,6 @@ func (Array) String() string {
 
 // LiveArrays returns zero when MLX is unavailable.
 func LiveArrays() int64 { return 0 }
+
+// Synchronize requires native MLX.
+func Synchronize() error { return errBuiltWithoutMLX }

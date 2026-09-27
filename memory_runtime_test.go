@@ -9,6 +9,9 @@ func TestRuntimeMemoryUsage(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer SetDefaultCPU()
+	if err := Synchronize(); err != nil {
+		t.Fatal(err)
+	}
 	before, err := GetMemoryUsage()
 	if err != nil {
 		t.Fatal(err)
@@ -32,6 +35,9 @@ func TestRuntimeMemoryUsage(t *testing.T) {
 	if err := y.Eval(); err != nil {
 		t.Fatal(err)
 	}
+	if err := Synchronize(); err != nil {
+		t.Fatal(err)
+	}
 	after, err := GetMemoryUsage()
 	if err != nil {
 		t.Fatal(err)
@@ -41,6 +47,9 @@ func TestRuntimeMemoryUsage(t *testing.T) {
 	}
 	x.Close()
 	y.Close()
+	if err := Synchronize(); err != nil {
+		t.Fatal(err)
+	}
 	closed, err := GetMemoryUsage()
 	if err != nil {
 		t.Fatal(err)

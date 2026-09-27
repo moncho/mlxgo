@@ -49,6 +49,24 @@ The local tested native baseline is MLX 0.32.0 with mlx-c 0.6.0_3. Homebrew
 dependencies are not bundled or pinned by `go get`; review the compatibility
 matrix and rerun runtime tests after native upgrades.
 
+### Non-Homebrew Installs
+
+Homebrew's `mlx-c` does not provide a pkg-config file. Default flags are declared
+once in `cgo_flags_mlx.go`. For a compatible installation in another prefix,
+set both C and C++ include paths and the linker search path:
+
+```sh
+prefix=/path/to/mlx-install
+CGO_CFLAGS="-I$prefix/include" CGO_CXXFLAGS="-I$prefix/include" \
+CGO_LDFLAGS="-L$prefix/lib -Wl,-rpath,$prefix/lib" \
+  go run -tags mlx ./cmd/smoke
+```
+
+Environment flags are combined with the in-source defaults (before them in the
+tested Go toolchain); missing default directories are harmless. Keep headers
+and libraries from the same compatible installation, including MLX's runtime
+dependencies. This does not extend the tested platform/version support matrix.
+
 ## Run The Smoke Test
 
 The real MLX bindings are behind the `mlx` build tag so that normal Go tooling
@@ -383,7 +401,7 @@ make finetune-mlp
   `MeanAxis`, `MeanAxes`, `LogSumExp`, `LogSumExpAxis`, `LogSumExpAxes`,
   `AddMM`, `CumsumAxis`
 - Device/stream control: `SetDefaultGPU`, `SetDefaultCPU`, `SetDefaultDevice`,
-  `Batch`
+  `Batch`, `Synchronize`
 - Shape/type ops: `Reshape`, `Transpose`, `TransposeAxes`, `BroadcastTo`,
   `ExpandDims`, `ExpandDimsAxes`, `Squeeze`, `SqueezeAxis`, `SqueezeAxes`,
   `Flatten`, `AsType`, `Contiguous`, `Slice`, `SliceUpdate`
@@ -413,8 +431,11 @@ The snapshot is process-wide, not a native-buffer or byte count; lazy graphs
 can retain buffers after their Go handles close. No finalizers are installed.
 
 `mlx.GetMemoryUsage()` reports process-wide MLX allocator active, cached and
-peak bytes, not Go heap size or process RSS. Evaluate pending work before reading
-the counters. `mlx.ResetPeakMemory()` resets the global peak statistic without
+peak bytes, not Go heap size or process RSS. Evaluate pending work and call
+`mlx.Synchronize()` before a measurement window to drain previously submitted
+work on the selected device's default stream. Synchronization does not evaluate
+unsubmitted lazy graphs or wait for unrelated streams, and other callers can
+still affect these process-wide counters. `mlx.ResetPeakMemory()` resets the global peak statistic without
 freeing allocations; use it only during coordinated profiling, not within
 ordinary inference calls. The [packed attention report](deepseek/FP8_ATTENTION_VALIDATION.md)
 shows whole-attention timing and allocator measurements on real weight samples.

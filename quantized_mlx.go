@@ -3,7 +3,6 @@
 package mlx
 
 /*
-#cgo darwin,arm64 CFLAGS: -I/opt/homebrew/include
 #include <stdlib.h>
 #include <mlx/c/mlx.h>
 */

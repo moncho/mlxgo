@@ -3,8 +3,6 @@
 package mlx
 
 /*
-#cgo darwin,arm64 CFLAGS: -I/opt/homebrew/include
-#cgo darwin,arm64 LDFLAGS: -L/opt/homebrew/lib -lmlxc
 #include <stdlib.h>
 #include <mlx/c/mlx.h>
 */
@@ -1819,6 +1817,17 @@ func vectorOp(arrays []Array, name string, op func(*C.mlx_array, C.mlx_vector_ar
 			return closeArrayAfterError(out, mlxError(name, int(code)))
 		}
 		return out, nil
+	})
+}
+
+// Synchronize waits for submitted work on the selected device's default stream.
+func Synchronize() error {
+	return withCurrentStream(func(stream C.mlx_stream) error {
+		clearMLXError()
+		if code := C.mlx_synchronize(stream); code != 0 {
+			return mlxError("mlx_synchronize", int(code))
+		}
+		return nil
 	})
 }
 
