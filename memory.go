@@ -1,5 +1,9 @@
 package mlx
 
+import "sync/atomic"
+
+var liveArrays atomic.Int64
+
 // MemoryUsage reports process-wide MLX allocator counters, not Go heap usage
 // or process RSS. Evaluate pending work before sampling. Cached bytes are free
 // allocations retained for reuse; peak tracks active bytes since the last reset.

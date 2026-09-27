@@ -503,3 +503,6 @@ func (Array) BoolData() ([]bool, error) {
 func (Array) String() string {
 	return errBuiltWithoutMLX.Error()
 }
+
+// LiveArrays returns zero when MLX is unavailable.
+func LiveArrays() int64 { return 0 }

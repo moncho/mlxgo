@@ -120,3 +120,28 @@ func TestSessionWithTrainedAdapters(t *testing.T) {
 	}
 	out.Close()
 }
+func TestSessionLiveArrays(t *testing.T) {
+	c := tinyConfig()
+	w := tinyWeights(t, c)
+	base := mlx.LiveArrays()
+	for range 3 {
+		s, err := NewSession(w, c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for range 4 {
+			a, err := s.Step([]int32{1})
+			if err != nil {
+				s.Close()
+				t.Fatal(err)
+			}
+			a.Close()
+		}
+		if err := s.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if got := mlx.LiveArrays(); got != base {
+			t.Fatalf("session leaked handles: before=%d after=%d", base, got)
+		}
+	}
+}

@@ -1315,13 +1315,17 @@ func (a *Array) Close() error {
 	if a == nil {
 		return nil
 	}
-	if a.state == nil || a.state.handle.ctx == nil {
+	if a.state == nil {
 		return nil
 	}
 	if !a.state.closed.CompareAndSwap(false, true) {
 		return nil
 	}
 	if !a.state.owned {
+		return nil
+	}
+	liveArrays.Add(-1)
+	if a.state.handle.ctx == nil {
 		return nil
 	}
 	return runMLX(func() error {
@@ -1974,8 +1978,12 @@ func (a Array) expectDType(expected DType) error {
 }
 
 func newArray(handle C.mlx_array) Array {
+	liveArrays.Add(1)
 	return Array{state: &arrayState{handle: handle, owned: true}}
 }
+
+// LiveArrays counts owned, unclosed Go array handles, not retained native graph buffers.
+func LiveArrays() int64 { return liveArrays.Load() }
 
 func borrowedArray(handle C.mlx_array) Array {
 	return Array{state: &arrayState{handle: handle}}

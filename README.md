@@ -406,6 +406,12 @@ make finetune-mlp
 
 ## Memory Profiling
 
+`mlx.LiveArrays()` counts owned Go array handles that have not been closed;
+copies sharing one handle count once, borrowed handles do not count, and the
+stub build returns zero. Compare before/after counts when testing cleanup.
+The snapshot is process-wide, not a native-buffer or byte count; lazy graphs
+can retain buffers after their Go handles close. No finalizers are installed.
+
 `mlx.GetMemoryUsage()` reports process-wide MLX allocator active, cached and
 peak bytes, not Go heap size or process RSS. Evaluate pending work before reading
 the counters. `mlx.ResetPeakMemory()` resets the global peak statistic without
