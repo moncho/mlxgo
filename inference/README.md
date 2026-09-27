@@ -119,7 +119,9 @@ mode still prints its final list.
 For incremental use, call `NewSession`, `Step`, `Position`, and `Close` through
 `lm.Session`. Returned logits are caller-owned `[1,1,vocab]` arrays. DeepSeek
 accepts a multi-token prefill and then one token per step. Use independent
-sessions for separate sequences. Concurrent model generation is supported;
+sessions for separate sequences. Qwen sessions own preallocated KV buffers,
+growing in 256-position blocks and evaluating them after every step. Discard a
+session after a generation error. Concurrent model generation is supported;
 native steps run on the existing MLX worker. `Model.Close` closes outstanding
 sessions before releasing weights. Concurrent operations finish their current
 step or return `ErrClosed`. Close methods are idempotent. As with `mlx.Batch`,

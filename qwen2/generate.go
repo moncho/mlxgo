@@ -33,7 +33,14 @@ func generate(w *Weights, c Config, tok *bpe.Tokenizer, prompt string, maxTokens
 	}
 	ids := tok.Encode(bpe.ChatTemplate(prompt))
 	r.PrefillTokens = len(ids)
-	cache := NewKVCache(c.NumLayers)
+	if w == nil || w.closed {
+		return r, fmt.Errorf("qwen2: closed weights")
+	}
+	dtype, err := w.Embed.DType()
+	if err != nil {
+		return r, err
+	}
+	cache := NewKVCache(c, dtype)
 	defer cache.Close()
 	for step := 0; step < maxTokens; step++ {
 		start := time.Now()

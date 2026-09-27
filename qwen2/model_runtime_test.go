@@ -101,7 +101,7 @@ func TestCachedForwardMatchesFullSequence(t *testing.T) {
 	}
 	c := tinyConfig()
 	w := tinyWeights(t, c)
-	cache := NewKVCache(c.NumLayers)
+	cache := NewKVCache(c, mlx.Float32)
 	defer cache.Close()
 	ids := []int32{1, 2, 3, 4, 5}
 	for i := range ids {
@@ -115,7 +115,7 @@ func TestCachedForwardMatchesFullSequence(t *testing.T) {
 		}
 		maxError(t, floatData(t, cached), floatData(t, full), 1e-4)
 		_ = mlx.CloseArrays([]mlx.Array{cached, full})
-		if cache.Offset != i+1 || !slices.Equal(cache.keys[0].Shape(), []int{1, 1, i + 1, 16}) {
+		if cache.Offset != i+1 || !slices.Equal(cache.keys[0].Shape(), []int{1, 1, cacheBlockSize, 16}) {
 			t.Fatal("incorrect cache growth")
 		}
 		if err := mlx.Eval(cache.Arrays()...); err != nil {
@@ -177,7 +177,7 @@ func TestQwenGolden(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer w.Close()
-	cache := NewKVCache(c.NumLayers)
+	cache := NewKVCache(c, mlx.BFloat16)
 	defer cache.Close()
 	logits, err := Forward(w, c, g.InputIDs, cache)
 	if err != nil {

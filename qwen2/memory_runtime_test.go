@@ -47,7 +47,7 @@ func TestQwenMemoryPlateau(t *testing.T) {
 	}
 	decode := func() {
 		t.Helper()
-		cache := NewKVCache(c.NumLayers)
+		cache := NewKVCache(c, mlx.BFloat16)
 		defer cache.Close()
 		ids := []int32{151644, 872, 198, 785}
 		for range 200 {

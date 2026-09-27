@@ -48,7 +48,11 @@ func NewSession(w *Weights, c Config) (*Session, error) {
 	if w == nil || w.closed || len(w.Layers) != c.NumLayers {
 		return nil, fmt.Errorf("qwen2: closed or incompatible weights")
 	}
-	return &Session{weights: w, config: c, cache: NewKVCache(c.NumLayers)}, nil
+	dtype, err := w.Embed.DType()
+	if err != nil {
+		return nil, err
+	}
+	return &Session{weights: w, config: c, cache: NewKVCache(c, dtype)}, nil
 }
 func (s *Session) Position() int {
 	if s == nil || s.cache == nil {

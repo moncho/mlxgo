@@ -58,7 +58,7 @@ func forward(w *Weights, c Config, tokens []int32, cache *KVCache, hook projecti
 	}
 	offset := 0
 	if cache != nil {
-		if cache.invalid || len(cache.keys) != c.NumLayers {
+		if cache.invalid || len(cache.keys) != c.NumLayers || cache.kvHeads != c.NumKVHeads || cache.headDim != c.HeadDim() || cache.maxPositions != c.MaxPositions {
 			return out, fmt.Errorf("qwen2: invalid cache")
 		}
 		offset = cache.Offset
@@ -165,6 +165,7 @@ func layerForward(x mlx.Array, l Layer, c Config, index, length, offset int, cac
 		if e != nil {
 			return mlx.Array{}, e
 		}
+		s.arrays = append(s.arrays, k, v)
 	}
 	mask := ""
 	if length > 1 {
