@@ -1426,11 +1426,8 @@ func (a Array) Float32Data() ([]float32, error) {
 			return nil, errors.New("mlxgo: MLX did not return materialized float32 data")
 		}
 
-		cdata := unsafe.Slice((*C.float)(unsafe.Pointer(ptr)), n)
 		data := make([]float32, n)
-		for i, v := range cdata {
-			data[i] = float32(v)
-		}
+		copy(data, unsafe.Slice((*float32)(unsafe.Pointer(ptr)), n))
 		return data, nil
 	})
 }
@@ -1464,11 +1461,8 @@ func (a Array) Float64Data() ([]float64, error) {
 			return nil, errors.New("mlxgo: MLX did not return materialized float64 data")
 		}
 
-		cdata := unsafe.Slice((*C.double)(unsafe.Pointer(ptr)), n)
 		data := make([]float64, n)
-		for i, v := range cdata {
-			data[i] = float64(v)
-		}
+		copy(data, unsafe.Slice((*float64)(unsafe.Pointer(ptr)), n))
 		return data, nil
 	})
 }
@@ -1502,11 +1496,8 @@ func (a Array) Int32Data() ([]int32, error) {
 			return nil, errors.New("mlxgo: MLX did not return materialized int32 data")
 		}
 
-		cdata := unsafe.Slice((*C.int32_t)(unsafe.Pointer(ptr)), n)
 		data := make([]int32, n)
-		for i, v := range cdata {
-			data[i] = int32(v)
-		}
+		copy(data, unsafe.Slice((*int32)(unsafe.Pointer(ptr)), n))
 		return data, nil
 	})
 }
@@ -1540,11 +1531,8 @@ func (a Array) Int64Data() ([]int64, error) {
 			return nil, errors.New("mlxgo: MLX did not return materialized int64 data")
 		}
 
-		cdata := unsafe.Slice((*C.int64_t)(unsafe.Pointer(ptr)), n)
 		data := make([]int64, n)
-		for i, v := range cdata {
-			data[i] = int64(v)
-		}
+		copy(data, unsafe.Slice((*int64)(unsafe.Pointer(ptr)), n))
 		return data, nil
 	})
 }
@@ -1578,11 +1566,8 @@ func (a Array) UInt32Data() ([]uint32, error) {
 			return nil, errors.New("mlxgo: MLX did not return materialized uint32 data")
 		}
 
-		cdata := unsafe.Slice((*C.uint32_t)(unsafe.Pointer(ptr)), n)
 		data := make([]uint32, n)
-		for i, v := range cdata {
-			data[i] = uint32(v)
-		}
+		copy(data, unsafe.Slice((*uint32)(unsafe.Pointer(ptr)), n))
 		return data, nil
 	})
 }
@@ -1613,7 +1598,9 @@ func (a Array) UInt8Data() ([]uint8, error) {
 		if ptr == nil {
 			return nil, errors.New("mlxgo: MLX did not return materialized uint8 data")
 		}
-		return append([]uint8(nil), unsafe.Slice((*uint8)(unsafe.Pointer(ptr)), n)...), nil
+		data := make([]uint8, n)
+		copy(data, unsafe.Slice((*uint8)(unsafe.Pointer(ptr)), n))
+		return data, nil
 	})
 }
 
@@ -1646,11 +1633,8 @@ func (a Array) UInt64Data() ([]uint64, error) {
 			return nil, errors.New("mlxgo: MLX did not return materialized uint64 data")
 		}
 
-		cdata := unsafe.Slice((*C.uint64_t)(unsafe.Pointer(ptr)), n)
 		data := make([]uint64, n)
-		for i, v := range cdata {
-			data[i] = uint64(v)
-		}
+		copy(data, unsafe.Slice((*uint64)(unsafe.Pointer(ptr)), n))
 		return data, nil
 	})
 }

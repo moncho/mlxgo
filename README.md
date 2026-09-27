@@ -434,7 +434,8 @@ token-to-expert dispatch and documents prepared packed checkpoint loading.
 - Use `Batch` to amortize dispatcher overhead across a sequence of MLX calls,
   such as a full training step.
 - Data-copy methods call `Contiguous` internally before touching MLX's raw data
-  pointers, so transposed and broadcasted views copy back correctly.
+  pointers, so transposed and broadcasted views copy back correctly. Numeric
+  readers bulk-copy into owned Go slices; bool readers convert each element.
 - The native build installs an MLX error handler during package initialization.
   MLX operation failures should return Go errors with MLX's diagnostic text
   instead of aborting the process.
