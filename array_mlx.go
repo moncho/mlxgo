@@ -159,7 +159,9 @@ func OnesLike(a Array) (Array, error) {
 	})
 }
 
-// Full creates an array filled with value, cast to dtype by MLX.
+// Full creates an array filled with value, cast to dtype by MLX on CPU before
+// broadcasting on the selected device. This avoids float64 GPU intermediates
+// without rounding integer fills through float32. Float64 output requires CPU.
 func Full(shape []int, value float64, dtype DType) (Array, error) {
 	cshape, err := cDataShape(shape)
 	if err != nil {
@@ -169,20 +171,37 @@ func Full(shape []int, value float64, dtype DType) (Array, error) {
 	if err != nil {
 		return Array{}, err
 	}
-	fill, err := NewScalarFloat64(value)
-	if err != nil {
-		return Array{}, err
-	}
-	defer fill.Close()
-	fillHandle, err := fill.handleValue()
-	if err != nil {
-		return Array{}, err
-	}
-
 	return withCurrentStreamValue(func(stream C.mlx_stream) (Array, error) {
+		fill, err := NewScalarFloat64(value)
+		if err != nil {
+			return Array{}, err
+		}
+		defer fill.Close()
+		fillHandle, err := fill.handleValue()
+		if err != nil {
+			return Array{}, err
+		}
+		cpu := C.mlx_default_cpu_stream_new()
+		if cpu.ctx == nil {
+			return Array{}, errors.New("mlxgo: failed to obtain CPU stream for Full")
+		}
+		defer C.mlx_stream_free(cpu)
+		converted := newArray(C.mlx_array_new())
+		defer converted.Close()
+		clearMLXError()
+		if code := C.mlx_astype(converted.outHandle(), fillHandle, cdtype, cpu); code != 0 {
+			return Array{}, mlxError("mlx_astype (Full scalar)", int(code))
+		}
+		if err := converted.Eval(); err != nil {
+			return Array{}, err
+		}
+		convertedHandle, err := converted.handleValue()
+		if err != nil {
+			return Array{}, err
+		}
 		out := newArray(C.mlx_array_new())
 		clearMLXError()
-		if code := C.mlx_full(out.outHandle(), cIntPtr(cshape), C.size_t(len(cshape)), fillHandle, cdtype, stream); code != 0 {
+		if code := C.mlx_full(out.outHandle(), cIntPtr(cshape), C.size_t(len(cshape)), convertedHandle, cdtype, stream); code != 0 {
 			return closeArrayAfterError(out, mlxError("mlx_full", int(code)))
 		}
 		return out, nil

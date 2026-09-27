@@ -100,9 +100,9 @@ On this machine, GPU single-token execution is about 3.5 times faster, while
 batch 128 is only about 6% faster. CPU execution is about 10 times slower for
 one token and 196 times slower at batch 128. Packing is therefore opt-in;
 reduced storage does not imply faster execution on every backend or workload.
-The benchmark uploads routing directly as float32 because the existing
-`mlx.Full(..., Float32)` helper constructs a float64 scalar that GPU rejects;
-that separate helper issue is not fixed by this change.
+The benchmark uploads routing directly as float32. At measurement time,
+`mlx.Full(..., Float32)` constructed a float64 scalar that GPU rejected;
+the v0.1.0 stabilization subsequently fixed that separate helper issue.
 
 ## Reproduce
 

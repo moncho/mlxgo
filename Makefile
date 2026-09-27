@@ -1,7 +1,7 @@
 GO ?= go
 GOCACHE ?= $(CURDIR)/.gocache
 
-.PHONY: test test-native test-runtime vet vet-native test-race test-race-native smoke linear mlp train-linear autograd-linear finetune-mlp generate finetune-qwen
+.PHONY: test test-native test-runtime vet vet-native test-race test-race-native release-check smoke linear mlp train-linear autograd-linear finetune-mlp generate finetune-qwen
 
 test:
 	GOCACHE="$(GOCACHE)" $(GO) test ./...
@@ -22,7 +22,9 @@ test-race:
 	GOCACHE="$(GOCACHE)" $(GO) test -race ./...
 
 test-race-native:
-	GOCACHE="$(GOCACHE)" CGO_ENABLED=1 $(GO) test -race -tags mlx ./...
+	GOCACHE="$(GOCACHE)" CGO_ENABLED=1 $(GO) test -race -tags "mlx mlxruntime" ./...
+
+release-check: test test-native test-runtime vet vet-native test-race-native
 
 smoke:
 	GOCACHE="$(GOCACHE)" CGO_ENABLED=1 $(GO) run -tags mlx ./cmd/smoke

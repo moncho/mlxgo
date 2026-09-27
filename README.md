@@ -4,6 +4,10 @@ Go bindings for Apple's MLX through the official MLX C bridge, with array,
 autograd and optimizer APIs, Qwen2.5-0.5B inference, and LoRA fine-tuning.
 The higher-level model packages are experimental and deliberately narrow.
 
+The first versioned release is **v0.1.0**, a pre-1.0 source release. See
+[compatibility and API stability](COMPATIBILITY.md),
+[release notes](RELEASE_NOTES.md), and the [release procedure](RELEASING.md).
+
 The [DeepSeek experimental package](deepseek/README.md) runs a reduced float32
 text backbone with sparse attention, MoE, residual mixing and per-session caches.
 It shares an inference interface and greedy decoder (`lm`) with Qwen. It does
@@ -21,7 +25,7 @@ Go -> cgo -> mlx-c -> MLX
 
 - Apple Silicon Mac
 - macOS 14 or newer
-- Go with cgo enabled
+- Go 1.26 or 1.27 with cgo enabled
 - Homebrew `mlx-c`
 
 Install the native dependencies:
@@ -33,13 +37,17 @@ brew install mlx-c
 Install the Go module:
 
 ```sh
-go get github.com/moncho/mlxgo
+go get github.com/moncho/mlxgo@v0.1.0
 ```
 
-The cgo binding in this starter uses Homebrew's Apple Silicon paths:
+The cgo binding uses Homebrew's Apple Silicon paths:
 
 - headers: `/opt/homebrew/include`
 - library: `/opt/homebrew/lib/libmlxc.dylib`
+
+The local tested native baseline is MLX 0.32.0 with mlx-c 0.6.0_3. Homebrew
+dependencies are not bundled or pinned by `go get`; review the compatibility
+matrix and rerun runtime tests after native upgrades.
 
 ## Run The Smoke Test
 

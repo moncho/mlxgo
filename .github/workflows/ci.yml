@@ -2,17 +2,27 @@ name: CI
 
 on:
   push:
+    branches: ['**']
   pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
 
 jobs:
   stub:
-    name: Stub build
+    name: Stub build (Go ${{ matrix.go }})
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ['1.26.x', '1.27.x']
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          go-version: ${{ matrix.go }}
       - run: go test ./...
       - run: go vet ./...
       - run: go test -race ./internal/deepseekaudit
@@ -20,28 +30,42 @@ jobs:
       - run: go run ./cmd/audit-deepseek -snapshot deepseek/testdata/released-checkpoint.metadata.json.gz -out "$RUNNER_TEMP/deepseek-audit.json"
 
   native:
-    name: Native mlx-c build
+    name: Native mlx-c build (Go ${{ matrix.go }})
     runs-on: macos-15
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ['1.26.x', '1.27.x']
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          go-version: ${{ matrix.go }}
       - run: brew install mlx-c
+      - run: brew list --versions mlx-c mlx
+      - run: sw_vers
       - run: CGO_ENABLED=1 go test -tags mlx ./...
       - run: CGO_ENABLED=1 go vet -tags mlx ./...
 
   runtime:
-    name: Native mlx-c runtime
+    name: Native mlx-c runtime (Go ${{ matrix.go }})
     runs-on: macos-15
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ['1.26.x', '1.27.x']
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          go-version: ${{ matrix.go }}
       - run: brew install mlx-c
+      - run: brew list --versions mlx-c mlx
+      - run: sw_vers
       - run: CGO_ENABLED=1 go test -tags "mlx mlxruntime" ./...
-      - run: CGO_ENABLED=1 go test -race -tags "mlx mlxruntime" ./checkpoint ./inference ./deepseek/quant
+      - run: CGO_ENABLED=1 go test -race -tags "mlx mlxruntime" . ./checkpoint ./inference ./deepseek/quant
       - run: CGO_ENABLED=1 go run -tags mlx ./cmd/smoke
       - run: CGO_ENABLED=1 go run -tags mlx ./cmd/linear
       - run: CGO_ENABLED=1 go run -tags mlx ./cmd/mlp
