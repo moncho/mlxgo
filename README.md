@@ -40,7 +40,8 @@ Go bindings for Apple's MLX through the official MLX C bridge, with array,
 autograd and optimizer APIs, Qwen2.5-0.5B inference, and LoRA fine-tuning.
 The higher-level model packages are experimental and deliberately narrow.
 
-The first versioned release is **v0.1.0**, a pre-1.0 source release. See
+This source tree targets **v0.2.0**, still a pre-1.0 library. Check
+[published releases](https://github.com/moncho/mlxgo/releases) for availability. See
 [compatibility and API stability](COMPATIBILITY.md),
 [release notes](RELEASE_NOTES.md), and the [release procedure](RELEASING.md).
 
@@ -70,10 +71,10 @@ Install the native dependencies:
 brew install mlx-c
 ```
 
-Install the Go module:
+Install a published Go module version (this command requires the v0.2.0 tag):
 
 ```sh
-go get github.com/moncho/mlxgo@v0.1.0
+go get github.com/moncho/mlxgo@v0.2.0
 ```
 
 The cgo binding uses Homebrew's Apple Silicon paths:
@@ -204,7 +205,8 @@ CPU selection. It uses the Qwen chat
 template, greedy decoding by default, tied embeddings, and a preallocated KV cache.
 Cache buffers grow in blocks of 256 positions in the weights' dtype. Direct
 cache users now call `qwen2.NewKVCache(config, dtype)` instead of passing a layer
-count; this is an unreleased breaking change intended for the next minor version.
+count; this is the breaking change in v0.2.0. See the
+[migration instructions](RELEASE_NOTES.md#migration-from-v010).
 For sampling, add `-temperature 0.8 -top-p 0.9 -seed 42`. Temperature zero
 preserves greedy decoding; top-p 0 or 1 disables nucleus filtering. The CLI
 requires a positive temperature when top-p is supplied. `lm.Sample`,

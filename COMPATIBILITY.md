@@ -1,6 +1,6 @@
 # Compatibility And Stability
 
-## v0.1.0 Support Boundary
+## v0.2.0 Support Boundary
 
 | Area | Supported or validated boundary |
 | --- | --- |
@@ -21,12 +21,18 @@ part of this release's supported configuration.
 
 ## API Policy
 
-`v0.1.0` is the first versioned source release. It is not a promise of v1 API
-stability or production suitability for every workload. Within the `v0.1.x`
-line, the intent is to preserve exported signatures and defaults, documenting
+`v0.2.0` remains pre-1.0. It is not a promise of v1 API stability or production
+suitability for every workload. Within each patch line (such as `v0.2.x`),
+the intent is to preserve exported signatures and defaults, documenting
 behavioral corrections and security fixes. Breaking changes target a new
 minor version and must be described in the release notes. Do not move published
 tags; fixes receive new versions. Applications should pin a module version.
+
+Upgrading from v0.1.0 requires direct cache users to replace
+`qwen2.NewKVCache(layers)` with `qwen2.NewKVCache(config, weightsDType)`.
+Sessions and the common inference loader make this change internally. The
+[release notes](RELEASE_NOTES.md#migration-from-v010) cover this signature and
+the generation error/streaming behavior changes.
 
 The root array/autograd/optimizer APIs are the reusable foundation. `qwen2`,
 `inference`, `deepseek`, and `deepseek/quant` remain experimental and narrow:
@@ -57,6 +63,14 @@ The test suite checks exported native/stub signature parity.
   weights remain resident. The prepared loader's byte limit is not an RSS limit.
 - CPU/GPU numerical results may differ. Quantized validation uses documented
   tolerances; component benchmarks are not whole-model throughput claims.
+- Sampling seeds MLX's process-wide RNG. Reproducibility assumes no interleaved
+  random operations from other callers; a seed is not per-session isolation.
+- Stream callbacks run on the caller outside internal batches. Do not wrap
+  streaming in a worker callback or `Batch` if the consumer waits for MLX work
+  on another goroutine. Callback errors return partial output, not a completion.
+- `LiveArrays` counts owned, unclosed Go handles, not native graph buffers or
+  bytes. `Synchronize` drains the selected default stream, not all streams;
+  submit lazy work first with `Eval` or `AsyncEval` before profiling.
 
 ## Validation
 
@@ -67,12 +81,12 @@ MLX initialization even before selecting CPU.
 
 Real-weight tests are opt-in because model weights are not included in the
 repository. A green public CI run therefore does not mean those tests ran.
-Local release-candidate validation on 2026-09-27 passed `make release-check`
-(including the complete native race suite) and the runtime suite with the
-existing pinned Qwen and DeepSeek sample paths enabled. This includes real
-Qwen golden/loader parity and DeepSeek's existing component references. The
-optional real Qwen resharding and 200-token RSS checks were not enabled in that
-run; the individual reports define exactly what each reference test checks.
+The v0.2.0 validation record is maintained in `RELEASE_NOTES.md`. Historical
+v0.1.0 validation on 2026-09-27 included `make release-check` and the real
+Qwen and DeepSeek sample tests. Later cache validation matched all 32 Qwen
+reference tokens with maximum prefill-logit error 0.03125 (limit 0.25), and
+the 200-token RSS gate passed without changing its 64 MiB growth limit.
+These are bounded regression checks, not a general model-quality guarantee.
 
 No test suite proves the absence of bugs. Report failures with module version,
 Go version, macOS/CPU model, MLX/mlx-c versions, build tags, selected device and
