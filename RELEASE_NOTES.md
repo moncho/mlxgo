@@ -4,35 +4,6 @@ Sampling, streaming, and Qwen cache improvements since v0.1.0, with additional
 ownership and profiling diagnostics. This remains a pre-1.0 source release;
 model integrations are experimental, not a universal checkpoint runtime.
 
-## Migration From v0.1.0
-
-The breaking change is the Qwen cache constructor:
-
-```go
-// v0.1.0
-cache := qwen2.NewKVCache(config.NumLayers)
-```
-
-```go
-// v0.2.0: use the actual base weights' dtype.
-dtype, err := weights.Embed.DType()
-if err != nil {
-    return err
-}
-cache := qwen2.NewKVCache(config, dtype)
-defer cache.Close()
-```
-
-Cache buffers grow lazily in 256-position blocks. Keep one cache per sequence
-and discard it after an error. Applications using `inference.Open`,
-`Model.Generate`, or `qwen2.NewSession` need no constructor changes.
-
-Existing `Generate`, `GenerateTokens`, and `lm.Greedy` signatures and successful
-greedy token selection are unchanged. Generation can now return partial output
-with an error; always check the error before treating a result as complete.
-Prompt-mode `cmd/generate` writes text incrementally, followed by its existing
-timing line. Raw-token mode still prints a final token list.
-
 ## Added
 
 - `lm.SamplingOptions`, `lm.Sample`, `Model.GenerateWith`, and
@@ -44,6 +15,10 @@ timing line. Raw-token mode still prints a final token list.
   on callback errors, and incremental text decoding that withholds incomplete
   UTF-8 suffixes until completion or the final flush. Text output omits EOS;
   raw-token generation includes a matching stop token.
+- Generation can return partial output with an error; always check the error
+  before treating a result as complete. Prompt-mode `cmd/generate` writes text
+  incrementally, followed by a timing line. Raw-token mode prints a final token
+  list.
 - Core `CumsumAxis`, `Slice`, and `SliceUpdate` with native/stub API parity.
 - `LiveArrays`: process-wide owned, unclosed Go handle count, including
   idempotent/concurrent close and Qwen session cleanup checks.
@@ -55,6 +30,9 @@ timing line. Raw-token mode still prints a final token list.
 
 - Qwen preallocated KV buffers replace per-step whole-cache concatenation.
   The cache retains the base dtype and sessions evaluate buffers each step.
+  Construct a cache with `qwen2.NewKVCache(config, dtype)`; buffers grow lazily
+  in 256-position blocks. Keep one cache per sequence and discard it after an
+  error.
 - Numeric readers use bulk copies after contiguous materialization; boolean
   readers retain element conversion. Returned slices remain Go-owned.
 - Empty native output handles are marked closed and removed from live-handle

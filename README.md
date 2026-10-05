@@ -204,9 +204,7 @@ Generation runs entirely in Go through MLX, with GPU by default and optional
 CPU selection. It uses the Qwen chat
 template, greedy decoding by default, tied embeddings, and a preallocated KV cache.
 Cache buffers grow in blocks of 256 positions in the weights' dtype. Direct
-cache users now call `qwen2.NewKVCache(config, dtype)` instead of passing a layer
-count; this is the breaking change in v0.2.0. See the
-[migration instructions](RELEASE_NOTES.md#migration-from-v010).
+cache users construct a cache with `qwen2.NewKVCache(config, dtype)`.
 For sampling, add `-temperature 0.8 -top-p 0.9 -seed 42`. Temperature zero
 preserves greedy decoding; top-p 0 or 1 disables nucleus filtering. The CLI
 requires a positive temperature when top-p is supplied. `lm.Sample`,

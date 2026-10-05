@@ -28,12 +28,6 @@ behavioral corrections and security fixes. Breaking changes target a new
 minor version and must be described in the release notes. Do not move published
 tags; fixes receive new versions. Applications should pin a module version.
 
-Upgrading from v0.1.0 requires direct cache users to replace
-`qwen2.NewKVCache(layers)` with `qwen2.NewKVCache(config, weightsDType)`.
-Sessions and the common inference loader make this change internally. The
-[release notes](RELEASE_NOTES.md#migration-from-v010) cover this signature and
-the generation error/streaming behavior changes.
-
 The root array/autograd/optimizer APIs are the reusable foundation. `qwen2`,
 `inference`, `deepseek`, and `deepseek/quant` remain experimental and narrow:
 support for an architecture name does not imply support for every checkpoint,
