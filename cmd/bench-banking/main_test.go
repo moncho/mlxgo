@@ -98,3 +98,37 @@ func TestLogisticReportValidation(t *testing.T) {
 		t.Fatal("accepted missing fitting identity")
 	}
 }
+
+func TestCompareRequiresExpectedSystems(t *testing.T) {
+	for _, missing := range []string{"nb", "base", "lora"} {
+		t.Run(missing, func(t *testing.T) {
+			dir := t.TempDir()
+			var paths []string
+			var m bankingbench.Manifest
+			var data map[string][]bankingbench.Record
+			for _, system := range []string{"nb", "base", "lora"} {
+				r, manifest, records := sampleReport(t, system)
+				m, data = manifest, records
+				if system == missing {
+					r.System, r.Decoding, r.MaxTokens = "tfidf", "none", 0
+					r.Identity = identity{Logistic: &bankingbench.LogisticInfo{C: 4, Features: 12, Iterations: 10, Status: "GradientThreshold", Objective: .2, GradientMax: 1e-7}}
+				}
+				if err := validateReport(r, m, data); err != nil {
+					t.Fatal(err)
+				}
+				b, err := json.Marshal(r)
+				if err != nil {
+					t.Fatal(err)
+				}
+				path := filepath.Join(dir, system+".json")
+				if err := os.WriteFile(path, b, 0o644); err != nil {
+					t.Fatal(err)
+				}
+				paths = append(paths, path)
+			}
+			if err := compare(paths, m, data); err == nil {
+				t.Fatalf("accepted TF-IDF in place of %s", missing)
+			}
+		})
+	}
+}

@@ -389,6 +389,9 @@ func compare(paths []string, m bankingbench.Manifest, data map[string][]bankingb
 		if err := validateReport(r, m, data); err != nil {
 			return fmt.Errorf("%s: %w", path, err)
 		}
+		if !slices.Contains([]string{"nb", "base", "lora"}, r.System) {
+			return fmt.Errorf("compare requires nb, base, and lora reports")
+		}
 		if _, exists := reports[r.System]; exists || split != "" && split != r.Split {
 			return fmt.Errorf("duplicate systems or mismatched evaluation splits")
 		}
