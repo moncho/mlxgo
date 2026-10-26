@@ -42,6 +42,8 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go }}
+      # Refresh the runner image's formula metadata for the mlx-c 0.7 API.
+      - run: brew update
       - run: brew install mlx-c
       - run: brew list --versions mlx-c mlx
       - run: sw_vers
@@ -61,6 +63,8 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go }}
+      # Refresh the runner image's formula metadata for the mlx-c 0.7 API.
+      - run: brew update
       - run: brew install mlx-c
       - run: brew list --versions mlx-c mlx
       - run: sw_vers
