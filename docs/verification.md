@@ -91,6 +91,11 @@ logits/losses/updates, or 2e-4 for gradients. This tiny FP32 check complements t
 real-checkpoint bf16 inference fixture; it does not cover checkpoint conversion,
 quantization, or longer training trajectories.
 
+The current fixture uses PyTorch 2.13.0 with patched certifi, filelock, and
+setuptools pins. Regeneration preserves the LitGPT commit, upstream source
+hashes, initial weights, and adapters; the CPU/GPU tests retain their existing
+acceptance limits.
+
 ### LitGPT Training Runtime
 
 The runtime benchmarks use the same fixture, two examples per optimizer step,
@@ -132,6 +137,10 @@ fixture has sequence lengths 5 and 3 and hidden width 8. Treat it as a compariso
 of tiny training steps, not evidence of full-size model throughput or inference
 speed. A representative performance comparison needs realistic model sizes,
 sequence lengths, and batch sizes measured separately.
+
+The saved tiny and checkpoint training measurements use PyTorch 2.8.0 and the
+earlier fixture provenance. They have not been rerun with the current reference
+dependencies; their embedded versions and hashes describe those historical runs.
 
 ### Qwen2.5 Checkpoint Training Runtime
 

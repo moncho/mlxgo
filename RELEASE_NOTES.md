@@ -36,7 +36,11 @@ remains a pre-1.0 source release with experimental model integrations.
   and LoRA Qwen instead of printing a zero-value row for a missing classifier.
   Use `ablate` for the supported comparisons across additional variants.
 - Native CI race checks include the new DeepSeek bank/session concurrency tests
-  and concurrent reuse of `lm.Choices`.
+  and concurrent reuse of `lm.Choices`. Native jobs refresh Homebrew metadata
+  before installing mlx-c so runner images do not retain the old API.
+- Python training-reference dependencies use patched certifi, filelock,
+  setuptools, and PyTorch versions. The tiny fixture is regenerated with
+  PyTorch 2.13.0 and the same pinned LitGPT source and acceptance limits.
 - The Qwen inference fixture is regenerated independently with MLX 0.32.4.
   The native upgrade changes greedy tokens near tied BF16 logits; the pinned
   checkpoint and 32-token/0.25-logit acceptance limits are unchanged.
@@ -55,7 +59,7 @@ Native support remains Apple Silicon macOS with cgo and external MLX/mlx-c
 headers and libraries. mlx-c 0.6 is no longer supported. The local validation
 baseline is Go 1.27.0, macOS 27.0.1, MLX 0.32.4, and mlx-c 0.7.0_1. CI targets
 Go 1.26/1.27 on macOS 15, plus Linux stub builds. Homebrew dependencies are not
-pinned by the Go module; see [compatibility](COMPATIBILITY.md).
+pinned by the Go module; see [compatibility](https://github.com/moncho/mlxgo/blob/v0.3.0/COMPATIBILITY.md).
 
 ## Validation
 
@@ -65,6 +69,9 @@ Local validation passed on the baseline above:
   suite, and the complete native race suite.
 - BANKING77 comparison regression tests in default, native, and race builds,
   plus package vet after the report-validation fix.
+- The updated training-reference environment passes `pip check`; repeated
+  fixture generation is byte-identical. CPU/GPU training parity passes with
+  the existing tensor tolerances and unchanged initial weights and adapters.
 - Independent upstream Qwen runs on MLX 0.32.0 and 0.32.4 reproduced their
   respective reference sequences. The refreshed 0.32.4 fixture matches all
   32 Go tokens with maximum prefill-logit error 0.03125, below the unchanged
@@ -95,8 +102,9 @@ these files does not publish a tag or GitHub release.
   support or expert offloading.
 - Saved DeepSeek measurements use untrained synthetic models; saved Qwen
   training measurements use the documented FP32 workloads. Both were recorded
-  with MLX 0.32.0 and mlx-c 0.6.0_3, not the current release baseline. They are
-  historical measurements, not new performance claims for mlx-c 0.7.
+  with MLX 0.32.0 and mlx-c 0.6.0_3; the Python training measurements used
+  PyTorch 2.8.0. They are historical measurements, not new performance claims
+  for the current release dependencies.
 - The larger Qwen training comparison records strict adapter-value mismatches
   despite close losses. It is numerical characterization, not a full tensor
   parity pass. The tiny fixture's acceptance limits are unchanged.
@@ -105,8 +113,8 @@ these files does not publish a tag or GitHub release.
   presented as a completed evaluation.
 - Native work remains serialized on one OS thread. Device selection and the
   sampling RNG remain process-wide. Existing ownership, streaming, and model
-  support limits are described in [compatibility](COMPATIBILITY.md).
+  support limits are described in [compatibility](https://github.com/moncho/mlxgo/blob/v0.3.0/COMPATIBILITY.md).
 
 The release contains Go source and small reference fixtures, not native
 libraries, downloaded datasets, or model checkpoints. See
-[third-party notices](THIRD_PARTY_NOTICES.md) for bundled reference material.
+[third-party notices](https://github.com/moncho/mlxgo/blob/v0.3.0/THIRD_PARTY_NOTICES.md) for bundled reference material.
