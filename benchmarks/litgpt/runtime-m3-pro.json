@@ -1,0 +1,252 @@
+{
+  "format": "mlxgo-litgpt-training-runtime-v1",
+  "date": "2026-10-12",
+  "hardware": {
+    "chip": "Apple M3 Pro",
+    "cpu_cores": 11,
+    "memory_bytes": 19327352832,
+    "os": "macOS 27.0.1",
+    "os_build": "26A434"
+  },
+  "mlxgo": {
+    "base_revision": "a79e1b23c814481fa58d8c240451cebc2d494362",
+    "worktree_has_uncommitted_changes": true,
+    "go": "go1.27.0 darwin/arm64",
+    "mlx": "0.32.0",
+    "mlx_c_homebrew": "0.6.0_3",
+    "gomaxprocs": 11
+  },
+  "litgpt": {
+    "repository": "https://github.com/Lightning-AI/litgpt",
+    "revision": "18c931c15c2398621d35371a12d2b1785e855bb6",
+    "versions": {
+      "aiohappyeyeballs": "2.7.1",
+      "aiohttp": "3.14.5",
+      "aiosignal": "1.4.0",
+      "annotated-doc": "0.0.5",
+      "anyio": "4.15.1",
+      "attrs": "26.1.0",
+      "certifi": "2026.7.22",
+      "docstring_parser": "0.18.0",
+      "filelock": "4.1.1",
+      "frozenlist": "1.8.0",
+      "fsspec": "2026.9.0",
+      "h11": "0.16.0",
+      "hf-xet": "1.7.0",
+      "httpcore": "1.0.9",
+      "httpx": "0.28.1",
+      "huggingface_hub": "1.3.7",
+      "idna": "3.20",
+      "Jinja2": "3.1.6",
+      "jsonargparse": "4.41.0",
+      "lightning": "2.6.6",
+      "lightning-utilities": "0.15.3",
+      "markdown-it-py": "4.2.0",
+      "MarkupSafe": "3.0.4",
+      "mdurl": "0.1.2",
+      "mpmath": "1.3.0",
+      "multidict": "7.1.0",
+      "networkx": "3.7",
+      "numpy": "2.5.4",
+      "packaging": "26.3",
+      "propcache": "0.5.4",
+      "psutil": "7.2.2",
+      "Pygments": "2.21.0",
+      "pytorch-lightning": "2.6.6",
+      "PyYAML": "6.0.3",
+      "rich": "15.0.0",
+      "safetensors": "0.8.0",
+      "setuptools": "84.0.0",
+      "shellingham": "1.5.4",
+      "sympy": "1.14.0",
+      "tokenizers": "0.23.3",
+      "torch": "2.8.0",
+      "torchmetrics": "1.9.0",
+      "tqdm": "4.70.1",
+      "typer": "0.27.3",
+      "typer-slim": "0.24.0",
+      "typeshed_client": "2.13.0",
+      "typing_extensions": "4.16.0",
+      "yarl": "1.25.1",
+      "litgpt": "0.5.13"
+    },
+    "python": "3.12.10",
+    "dtype": "float32",
+    "attention_backend": "math",
+    "source_sha256": {
+      "model.py": "6abf1fd30a6ab8195c44f57baaa11effca9233b08c08c9f10c9d3b6a874f0009",
+      "lora.py": "b469a2d154b7ce235369673bb034635c050e377d60618f1e804eda8c21f2b6d5",
+      "config.py": "f89579ef33e3fab8e42f07a8dc651c087d8eae81886041087d448e3fbbd02822"
+    }
+  },
+  "local_source_sha256": {
+    "qwen2/testdata/litgpt_training.json": "e35a5e70840d73ba1fc2c86ab1d77c770584d6a3c0a5404e0473cfb60c2b319a",
+    "qwen2/litgpt_benchmark_test.go": "02120bf508362573a700c15fab591426adfedd50564686e05e04889f4292e267",
+    "qwen2/litgpt_runtime_test.go": "171d9e3730c3f04a1322e9a175367ee8817ac6f6029c28d9f02c7d1e779f5f36",
+    "qwen2/benchmark_training_reference.py": "3a1e22ca86921d7e5a23acaf137b1c214c9a0cce5f0d1f5a61d7cd42434af164",
+    "qwen2/make_training_fixture.py": "e8e35b7fa8a706e47db277110cb7f7581260835d88d6d7de75b14f7cc5d79e57",
+    "qwen2/requirements-training-reference.txt": "9eba10df7306779df9084424b8a5a1e14db5d6603fb8c421249e69ab5b2a7fb1",
+    "qwen2/train.go": "4c49d89fcdd6b336a3704a4473ea962046ad8a8354225934b0f449211d8576f3",
+    "qwen2/model.go": "e70e033715e551b51e4a21c1298e6e04306177bf2552e1e135e7631e3f9c4794",
+    "qwen2/lora.go": "6ad067030a31b29ca2f148c7c2c26bb8d3561b52a6563543d152c65187d54261",
+    "qwen2/weights.go": "0a67f51fef874c0551725743b3ece4a9b68d3c9b7b9ad8922ecea04cae5cc4a8"
+  },
+  "workload": {
+    "fixture": "qwen2/testdata/litgpt_training.json",
+    "dtype": "float32",
+    "config": {
+      "architectures": [
+        "Qwen2ForCausalLM"
+      ],
+      "model_type": "qwen2",
+      "hidden_size": 8,
+      "intermediate_size": 12,
+      "num_hidden_layers": 2,
+      "num_attention_heads": 2,
+      "num_key_value_heads": 1,
+      "rms_norm_eps": 1e-06,
+      "rope_theta": 10000,
+      "tie_word_embeddings": true,
+      "vocab_size": 16,
+      "max_position_embeddings": 32,
+      "hidden_act": "silu"
+    },
+    "lora": {
+      "rank": 2,
+      "alpha": 4
+    },
+    "optimizer": {
+      "learning_rate": 0.01,
+      "weight_decay": 0.1,
+      "beta1": 0.9,
+      "beta2": 0.999,
+      "epsilon": 1e-08,
+      "max_grad_norm": 0
+    },
+    "base_parameters": 1160,
+    "trainable_parameters": 112,
+    "examples_per_step": 2,
+    "input_lengths": [
+      5,
+      3
+    ],
+    "supervised_tokens_per_step": 5
+  },
+  "protocol": {
+    "rounds": 5,
+    "warmup_steps_per_round": 20,
+    "measured_steps_per_round": 100,
+    "rounds_reset_model_and_optimizer": true,
+    "warmup_retains_optimizer_state": true,
+    "model_setup_timed": false,
+    "synchronize_timing_boundaries": true,
+    "run_order": [
+      "Go/MLX cpu",
+      "Go/MLX gpu",
+      "LitGPT/PyTorch cpu",
+      "LitGPT/PyTorch mps"
+    ],
+    "run_sequentially": true,
+    "torch_cpu_threads": 1,
+    "vec_lib_maximum_threads": "1",
+    "mps_cpu_fallback": false,
+    "torch_compile": false,
+    "torch_adamw_foreach": false,
+    "torch_adamw_fused": false,
+    "note": "Times cover input array creation, forward/backward, completion-token-weighted gradient accumulation, scalar loss reads, finite-gradient norm checks, and AdamW. Go shuffles the two examples and uses separate projections/adapters; LitGPT uses fixed example order and packed QKV/adapters. MLX CPU thread count is not asserted by the vecLib environment setting."
+  },
+  "results": [
+    {
+      "implementation": "Go/MLX",
+      "device": "cpu",
+      "ms_per_step": [
+        3.68468,
+        6.123568,
+        3.036318,
+        3.05024,
+        3.054915
+      ],
+      "median_ms_per_step": 3.054915,
+      "reported_final_losses": [
+        1.979,
+        1.979,
+        1.979,
+        1.979,
+        1.979
+      ],
+      "loss_precision": "Go benchmark output rounds the loss metric",
+      "min_ms_per_step": 3.036318,
+      "max_ms_per_step": 6.123568
+    },
+    {
+      "implementation": "Go/MLX",
+      "device": "gpu",
+      "ms_per_step": [
+        3.144561,
+        3.129408,
+        3.775749,
+        3.123952,
+        3.260213
+      ],
+      "median_ms_per_step": 3.144561,
+      "reported_final_losses": [
+        1.979,
+        1.979,
+        1.979,
+        1.979,
+        1.979
+      ],
+      "loss_precision": "Go benchmark output rounds the loss metric",
+      "min_ms_per_step": 3.123952,
+      "max_ms_per_step": 3.775749
+    },
+    {
+      "implementation": "LitGPT/PyTorch",
+      "device": "cpu",
+      "ms_per_step": [
+        1.6329891699933796,
+        1.6769695900075021,
+        1.8645770799776074,
+        1.6569191700182273,
+        1.632911660017271
+      ],
+      "median_ms_per_step": 1.6569191700182273,
+      "final_losses": [
+        1.978637933731079,
+        1.978637933731079,
+        1.978637933731079,
+        1.978637933731079,
+        1.978637933731079
+      ],
+      "min_ms_per_step": 1.632911660017271,
+      "max_ms_per_step": 1.8645770799776074
+    },
+    {
+      "implementation": "LitGPT/PyTorch",
+      "device": "mps",
+      "ms_per_step": [
+        21.536170409999613,
+        22.04935542002204,
+        21.465824580009212,
+        21.767227499985893,
+        21.57702500000596
+      ],
+      "median_ms_per_step": 21.57702500000596,
+      "final_losses": [
+        1.9786409854888916,
+        1.9786409854888916,
+        1.9786409854888916,
+        1.9786409854888916,
+        1.9786409854888916
+      ],
+      "min_ms_per_step": 21.465824580009212,
+      "max_ms_per_step": 22.04935542002204
+    }
+  ],
+  "go_benchmark_output": "goos: darwin\ngoarch: arm64\npkg: github.com/moncho/mlxgo/qwen2\ncpu: Apple M3 Pro\nBenchmarkLitGPTTrainingRuntime/cpu-11         \t     100\t   3684680 ns/op\t         1.979 loss\nBenchmarkLitGPTTrainingRuntime/cpu-11         \t     100\t   6123568 ns/op\t         1.979 loss\nBenchmarkLitGPTTrainingRuntime/cpu-11         \t     100\t   3036318 ns/op\t         1.979 loss\nBenchmarkLitGPTTrainingRuntime/cpu-11         \t     100\t   3050240 ns/op\t         1.979 loss\nBenchmarkLitGPTTrainingRuntime/cpu-11         \t     100\t   3054915 ns/op\t         1.979 loss\nBenchmarkLitGPTTrainingRuntime/gpu-11         \t     100\t   3144561 ns/op\t         1.979 loss\nBenchmarkLitGPTTrainingRuntime/gpu-11         \t     100\t   3129408 ns/op\t         1.979 loss\nBenchmarkLitGPTTrainingRuntime/gpu-11         \t     100\t   3775749 ns/op\t         1.979 loss\nBenchmarkLitGPTTrainingRuntime/gpu-11         \t     100\t   3123952 ns/op\t         1.979 loss\nBenchmarkLitGPTTrainingRuntime/gpu-11         \t     100\t   3260213 ns/op\t         1.979 loss\nPASS\nok  \tgithub.com/moncho/mlxgo/qwen2\t5.283s\n",
+  "limitations": [
+    "Tiny synthetic workload; does not establish full-size model throughput or inference performance.",
+    "Comparison is Go/MLX Train versus an explicit LitGPT/PyTorch loop with the same training objective, not LitGPT CLI defaults.",
+    "Measurements are sequential on a shared workstation, not a thermally controlled dedicated benchmark host."
+  ]
+}
