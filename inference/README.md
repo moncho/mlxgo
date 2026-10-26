@@ -52,6 +52,15 @@ reports architecture capabilities, not whether supplied packed selections match
 the weight files. The command-line generator does not yet expose packed selections;
 use the Go API for these bundles.
 
+For device-side expert dispatch during DeepSeek decode, set
+`DeepSeek.Session.DeviceDecode = true`. The initial prompt uses sparse dispatch;
+subsequent tokens use a shared model-owned expert bank. Each layer must have
+homogeneous float32 or FP4 expert storage (including its shared expert), so the
+partially packed example above must be changed before enabling this option.
+Bank preparation happens during `Open` when it validates session options. It is
+excluded from subsequent generation calls. See the
+[decode backend and generation benchmark](../deepseek/DEVICE_DECODE_VALIDATION.md).
+
 ## Go API
 
 ```go

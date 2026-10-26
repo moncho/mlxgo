@@ -351,6 +351,10 @@ make finetune-mlp
 - Weight-only quantized matmul: `MXFP8Matmul`, `MXFP4Matmul` (packed UInt32
   weights and UInt8 E8M0 scales; floating inputs). See the experimental
   [DeepSeek adapters and validation](deepseek/README.md).
+- Device-indexed matrix products: `GatherMM`, `GatherMXFP4`. The experimental
+  [expert-bank prototype](deepseek/DEVICE_MOE_VALIDATION.md) keeps MoE routing
+  indices on the device for float32 and packed FP4 execution. DeepSeek sessions
+  can opt into [device decode with sparse prefill](deepseek/DEVICE_DECODE_VALIDATION.md).
 
 ## Memory Profiling
 

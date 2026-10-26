@@ -256,6 +256,42 @@ are rejected before mutation. Close each session and its model when finished.
 This is an inference path, not a whole-model training API. The individual
 primitive functions below remain differentiable.
 
+### Device-Side Expert Bank
+
+`NewDeviceMoE(experts, shared)` prepares a float32 expert bank;
+`NewFP4DeviceMoE(experts, shared, dim, inter)` prepares a packed FP4 bank.
+Call `Forward(x, routerWeight, routerBias, routerConfig, limit)` to run the
+router, selected experts and shared expert with routing indices kept on the
+device. Close returned arrays and the bank when finished. Weights are prepared
+once; construction inputs remain caller-owned and may then be closed.
+
+This inference component uses MLX gather operations and supports compiled calls.
+It accepts homogeneous float32 or FP4 banks with float32 activations. See the
+[correctness checks and component benchmarks](DEVICE_MOE_VALIDATION.md).
+
+To use it for incremental generation, opt in when creating a session:
+
+```go
+session, err := model.NewSessionWithOptions(deepseek.SessionOptions{
+    DeviceDecode: true,
+})
+```
+
+The initial prompt uses the existing sparse scheduler, even when it contains
+one token. Subsequent decode steps keep expert selection on the device.
+`DeviceDecode` implies sparse prefill; setting `SparseExperts` as well is optional.
+Each layer must have entirely float32 or entirely FP4 experts, including its
+shared expert. Different layers may use different storage. A mixed layer is
+rejected without changing the model. Cache quantization is an independent option.
+
+The first opted-in session prepares model-owned banks once. Existing dense and
+sparse paths then use independent views of those same routed-weight buffers;
+there is no second resident copy. Original and stacked weights coexist during
+preparation. Sessions share banks, and closing a session releases only its caches.
+The model releases banks on close. Default sessions retain their existing behavior.
+See [complete generation measurements](DEVICE_DECODE_VALIDATION.md) for scope,
+validation and reproduction.
+
 ## Engram
 
 `EngramHasher` is a pure-Go, per-sequence state machine. It remaps original IDs

@@ -19,6 +19,7 @@ type Model struct {
 	fp8Attention       map[string]*quant.FP8Linear
 	fp8AttentionOutput map[string][]*quant.FP8Linear
 	fp4Experts         map[string]*FP4Expert
+	deviceExperts      map[int]*DeviceMoE
 	closed             bool
 }
 
@@ -215,6 +216,12 @@ func (m *Model) Close() error {
 			}
 		}
 		m.fp4Experts = nil
+		for _, bank := range m.deviceExperts {
+			if e := bank.Close(); err == nil {
+				err = e
+			}
+		}
+		m.deviceExperts = nil
 		return err
 	})
 }
@@ -254,6 +261,13 @@ type SessionOptions struct {
 	// indices to Go once per layer; weights and activations stay on device.
 	// Inference-only, not compatible with Compile/autograd. Defaults stay dense.
 	SparseExperts bool
+	// DeviceDecode uses device-side expert dispatch after the initial prompt.
+	// Prefill always uses SparseExperts, including a one-token prompt. Banks
+	// are prepared once on the model when the first such session is created;
+	// existing sparse/dense sessions share views of the same resident weights.
+	// Each layer must be wholly float32 or wholly FP4 (including its shared
+	// expert). Mixed storage within a layer is rejected. Defaults are unchanged.
+	DeviceDecode bool
 	// QuantizedCaches stores window KV as FP8 and compressed KV/index keys as
 	// packed FP4, and quantizes index queries before scoring. Activations and
 	// reconstructed values remain float32 and are not BF16-rounded. Projection
@@ -283,6 +297,11 @@ func (m *Model) NewSessionWithOptions(options SessionOptions) (session *Session,
 			}
 			if len(m.config.KVSources) > 0 && (m.config.IndexDim <= 0 || m.config.IndexDim%32 != 0) {
 				return fmt.Errorf("deepseek: quantized caches require index_head_dim divisible by 32")
+			}
+		}
+		if options.DeviceDecode {
+			if err := m.prepareDeviceExperts(); err != nil {
+				return err
 			}
 		}
 		session = &Session{model: m, layers: make([]layerCache, m.config.Layers), options: options}
@@ -445,7 +464,9 @@ func (session *Session) block(s *scope, x, previous mlx.Array, layer int, shared
 	}
 	n := h.Shape()[1]
 	h = s.add(mlx.Reshape(h, []int{n, c.Dim}))
-	if session.options.SparseExperts {
+	if session.options.DeviceDecode && session.offset > 0 {
+		h = s.add(session.model.deviceExperts[layer].Forward(h, w[p+"ffn.gate.weight"], w[p+"ffn.gate.bias"], c.Router, c.Limit))
+	} else if session.options.SparseExperts || session.options.DeviceDecode {
 		h = session.model.sparseMoE(s, h, layer)
 	} else if len(session.model.fp4Experts) > 0 {
 		h = session.model.packedMoE(s, h, layer)
