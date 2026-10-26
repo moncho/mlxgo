@@ -6,7 +6,7 @@ aiosignal==1.4.0
 annotated-doc==0.0.5
 anyio==4.15.1
 attrs==26.1.0
-certifi==2026.7.22
+certifi==2026.10.19
 docstring_parser==0.18.0
 filelock==4.1.1
 frozenlist==1.8.0
