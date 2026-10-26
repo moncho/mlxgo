@@ -641,8 +641,8 @@ func validateSlice(a Array, start, stop, strides []int) error {
 
 // CumsumAxis returns the inclusive forward cumulative sum along axis.
 func CumsumAxis(a Array, axis int) (Array, error) {
-	return unaryOp(a, "mlx_cumsum", func(out *C.mlx_array, input C.mlx_array, stream C.mlx_stream) C.int {
-		return C.mlx_cumsum(out, input, C.int(axis), false, true, stream)
+	return unaryOp(a, "mlx_cumsum_axis", func(out *C.mlx_array, input C.mlx_array, stream C.mlx_stream) C.int {
+		return C.mlx_cumsum_axis(out, input, C.int(axis), false, true, C.mlx_optional_dtype{}, stream)
 	})
 }
 
