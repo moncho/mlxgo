@@ -276,6 +276,9 @@ use. A cache belongs to one generation, and must be discarded after an error.
 
 See [resumable training and the extraction benchmark](docs/training.md) and
 [reference verification](docs/verification.md) for the detailed workflows.
+The [BANKING77 classification pilot](benchmarks/banking77/README.md) compares
+fine-tuning against both prompted Qwen and a simple non-LLM classifier on public
+labeled data.
 For finite-label tasks, `lm.NewChoices` builds a trie of allowed token sequences;
 its `Greedy` method constrains any `lm.Session` to those choices. Include EOS in
 each sequence and check errors before using the output. This guarantees label

@@ -70,3 +70,16 @@ timings, process peak RSS, and checkpoint/dataset hashes. The data is synthetic;
 this is a reproducible application-shaped experiment, not a real-world accuracy
 claim. Run `go run ./cmd/bench-qwen -mode prepare` without MLX to recreate the data.
 
+### Public Intent Classification
+
+The [BANKING77 pilot](../benchmarks/banking77/README.md) compares prompted Qwen,
+LoRA-tuned Qwen, and a word-unigram Naive Bayes baseline on the same 77-intent
+task. It uses pinned public data, deterministic disjoint few-shot splits, strict
+label scoring, and per-intent metrics. The command also classifies new messages.
+It is a small closed-set benchmark, not a production banking system or evidence
+that an LLM is preferable to a simpler classifier.
+
+The [follow-up experiment](../benchmarks/banking77/followup.md) expands training
+while freezing validation and reserving previously unused test messages. It
+compares data/training-budget changes separately from label-constrained decoding
+using `lm.NewChoices`; valid output labels can still be semantically wrong.

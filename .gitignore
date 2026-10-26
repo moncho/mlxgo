@@ -6,4 +6,7 @@ coverage.out
 /checkpoints/
 /.venv-qwen/
 /models/
+/benchmarks/banking77/data/
+/benchmarks/banking77/data-v2/
+/benchmarks/banking77/data-v3/
 __pycache__/
