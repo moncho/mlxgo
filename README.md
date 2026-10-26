@@ -40,7 +40,7 @@ Go bindings for Apple's MLX through the official MLX C bridge, with array,
 autograd and optimizer APIs, Qwen2.5-0.5B inference, and LoRA fine-tuning.
 The higher-level model packages are experimental and deliberately narrow.
 
-This source tree targets **v0.2.0**, still a pre-1.0 library. Check
+This source tree targets **v0.3.0**, still a pre-1.0 library. Check
 [published releases](https://github.com/moncho/mlxgo/releases) for availability. See
 [compatibility and API stability](COMPATIBILITY.md),
 [release notes](RELEASE_NOTES.md), and the [release procedure](RELEASING.md).
@@ -63,7 +63,7 @@ Go -> cgo -> mlx-c -> MLX
 - Apple Silicon Mac
 - macOS 14 or newer
 - Go 1.26 or 1.27 with cgo enabled
-- Homebrew `mlx-c`
+- Homebrew `mlx-c` 0.7.0 or newer with matching MLX headers and libraries
 
 Install the native dependencies:
 
@@ -71,10 +71,10 @@ Install the native dependencies:
 brew install mlx-c
 ```
 
-Install a published Go module version (this command requires the v0.2.0 tag):
+Install a published Go module version (this command requires the v0.3.0 tag):
 
 ```sh
-go get github.com/moncho/mlxgo@v0.2.0
+go get github.com/moncho/mlxgo@v0.3.0
 ```
 
 The cgo binding uses Homebrew's Apple Silicon paths:
@@ -82,9 +82,10 @@ The cgo binding uses Homebrew's Apple Silicon paths:
 - headers: `/opt/homebrew/include`
 - library: `/opt/homebrew/lib/libmlxc.dylib`
 
-The local tested native baseline is MLX 0.32.0 with mlx-c 0.6.0_3. Homebrew
-dependencies are not bundled or pinned by `go get`; review the compatibility
-matrix and rerun runtime tests after native upgrades.
+The local tested native baseline is MLX 0.32.4 with mlx-c 0.7.0_1. The
+`CumsumAxis` binding requires the mlx-c 0.7 API; mlx-c 0.6 is no longer supported.
+Homebrew dependencies are not bundled or pinned by `go get`; review the
+compatibility matrix and rerun runtime tests after native upgrades.
 
 ### Non-Homebrew Installs
 

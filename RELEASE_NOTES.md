@@ -1,108 +1,112 @@
-# v0.2.0
+# v0.3.0
 
-Sampling, streaming, and Qwen cache improvements since v0.1.0, with additional
-ownership and profiling diagnostics. This remains a pre-1.0 source release;
-model integrations are experimental, not a universal checkpoint runtime.
+Device-side DeepSeek expert dispatch, constrained generation, and training
+verification since v0.2.0. Native builds now require the mlx-c 0.7 API. This
+remains a pre-1.0 source release with experimental model integrations.
 
 ## Added
 
-- `lm.SamplingOptions`, `lm.Sample`, `Model.GenerateWith`, and
-  `Model.GenerateTokensWith`: temperature, top-p filtering, and an MLX seed.
-  Temperature zero uses the greedy path; top-p zero or one disables filtering.
-  Options must be finite and in range. CLI flags are `-temperature`, `-top-p`,
-  and `-seed`; an explicit `-top-p` requires positive temperature.
-- `lm.Stream` and `Model.Stream`: caller-goroutine callbacks, partial results
-  on callback errors, and incremental text decoding that withholds incomplete
-  UTF-8 suffixes until completion or the final flush. Text output omits EOS;
-  raw-token generation includes a matching stop token.
-- Generation can return partial output with an error; always check the error
-  before treating a result as complete. Prompt-mode `cmd/generate` writes text
-  incrementally, followed by a timing line. Raw-token mode prints a final token
-  list.
-- Core `CumsumAxis`, `Slice`, and `SliceUpdate` with native/stub API parity.
-- `LiveArrays`: process-wide owned, unclosed Go handle count, including
-  idempotent/concurrent close and Qwen session cleanup checks.
-- `Synchronize`: wait for submitted work on the selected default stream.
-  The allocator regression test now synchronizes its measurement window;
-  neither 8 MiB assertion was relaxed.
+- `GatherMM` and `GatherMXFP4`: matrix products selected by device-resident
+  index arrays, with matching unavailable stubs for builds without MLX.
+- DeepSeek float32 and packed FP4 expert banks, exposed through `DeviceMoE`
+  and the opt-in `SessionOptions.DeviceDecode`. The initial prompt uses sparse
+  dispatch; subsequent tokens select experts on the device. Banks are prepared
+  once per model and shared by sessions. Default session behavior is unchanged.
+- `lm.NewChoices` and `Choices.Greedy`: generation restricted to complete
+  allowed token sequences. Include EOS in each choice when the model selects
+  termination, and check errors before using a returned label. Successful
+  generation guarantees membership, not classification accuracy or maximum
+  whole-sequence likelihood.
+- `cmd/bench-banking`: reproducible BANKING77 preparation, evaluation, and
+  validation-based selection for prompted Qwen, LoRA, Naive Bayes, and TF-IDF
+  logistic regression. Downloaded datasets and training artifacts are excluded
+  from the release. The full-data search remains incomplete; no final test
+  result is claimed for it.
+- A tiny LitGPT/PyTorch training reference covering logits, masked losses,
+  LoRA gradients, an AdamW update, and frozen base weights on CPU and GPU.
+  Go tests consume the saved fixture without Python or model downloads.
+- Opt-in tiny-model and Qwen2.5-0.5B training benchmarks with pinned reference
+  tooling and saved measurements. These do not change the Qwen training API.
 
-## Improved
+## Fixed
 
-- Qwen preallocated KV buffers replace per-step whole-cache concatenation.
-  The cache retains the base dtype and sessions evaluate buffers each step.
-  Construct a cache with `qwen2.NewKVCache(config, dtype)`; buffers grow lazily
-  in 256-position blocks. Keep one cache per sequence and discard it after an
-  error.
-- Numeric readers use bulk copies after contiguous materialization; boolean
-  readers retain element conversion. Returned slices remain Go-owned.
-- Empty native output handles are marked closed and removed from live-handle
-  accounting on operation failure.
-- Homebrew cgo flags are centralized, with custom C/C++ prefix guidance.
-- A top-level quickstart and separate training/verification guides make the
-  existing supported workflows easier to find.
-
-On the local Apple M3 Pro, the September 27 single-run GPU decode measurements
-before/after the cache change were 100.5/101.5 tokens/s at a 48-token budget and
-102.2/101.5 at 512 tokens, using the same prompt. These do not demonstrate a
-meaningful speedup. They measure forward passes, not end-to-end throughput.
+- `CumsumAxis` calls `mlx_cumsum_axis` with an unset optional dtype, preserving
+  inclusive forward behavior with mlx-c 0.7. Its Go signature is unchanged.
+- BANKING77 `compare` rejects report sets other than Naive Bayes, base Qwen,
+  and LoRA Qwen instead of printing a zero-value row for a missing classifier.
+  Use `ablate` for the supported comparisons across additional variants.
+- Native CI race checks include the new DeepSeek bank/session concurrency tests
+  and concurrent reuse of `lm.Choices`.
+- The Qwen inference fixture is regenerated independently with MLX 0.32.4.
+  The native upgrade changes greedy tokens near tied BF16 logits; the pinned
+  checkpoint and 32-token/0.25-logit acceptance limits are unchanged.
 
 ## Installation
 
-After the v0.2.0 tag is published:
+After the v0.3.0 tag is published:
 
 ```sh
 brew install mlx-c
-go get github.com/moncho/mlxgo@v0.2.0
+go get github.com/moncho/mlxgo@v0.3.0
 go run -tags mlx ./your-app
 ```
 
-Native support remains Apple Silicon macOS with cgo and the external MLX/mlx-c
-libraries. The local validation baseline is Go 1.27.0, macOS 26.7, MLX 0.32.0,
-and mlx-c 0.6.0_3. CI covers Go 1.26/1.27 on macOS 15, plus Linux stub builds.
-See `COMPATIBILITY.md` for the support boundary and native dependency policy.
+Native support remains Apple Silicon macOS with cgo and external MLX/mlx-c
+headers and libraries. mlx-c 0.6 is no longer supported. The local validation
+baseline is Go 1.27.0, macOS 27.0.1, MLX 0.32.4, and mlx-c 0.7.0_1. CI targets
+Go 1.26/1.27 on macOS 15, plus Linux stub builds. Homebrew dependencies are not
+pinned by the Go module; see [compatibility](COMPATIBILITY.md).
 
 ## Validation
 
-Local validation on 2026-10-04 passed:
+Local validation passed on the baseline above:
 
-- `make release-check`: stub/native tests and vet, the full native runtime
+- `make release-check`: stub/native tests and vet, the complete native runtime
   suite, and the complete native race suite.
-- All five core examples: smoke, linear, MLP, manual-gradient training, and
-  autograd training. The real Qwen sampled CLI reproduced identical text in two
-  fresh processes with temperature 0.8, top-p 0.9, and seed 42.
-- Real Qwen golden verification: 32/32 reference tokens and maximum absolute
-  prefill-logit error 0.03125, below the unchanged 0.25 limit.
-- Real Qwen common-loader parity and temporary three-shard loading: 32/32
-  reference tokens. The 200-token memory gate retained 44.2 -> 45.8 -> 46.0 MiB
-  RSS, below the unchanged 64 MiB growth limit.
-- DeepSeek's runtime suite with the existing local attention, compressed/shared
-  attention, output/query projection, expert, and quantized-cache references
-  enabled; the separate quantization suite also used its real activation oracle.
+- BANKING77 comparison regression tests in default, native, and race builds,
+  plus package vet after the report-validation fix.
+- Independent upstream Qwen runs on MLX 0.32.0 and 0.32.4 reproduced their
+  respective reference sequences. The refreshed 0.32.4 fixture matches all
+  32 Go tokens with maximum prefill-logit error 0.03125, below the unchanged
+  0.25 limit. Both tokenizer fixtures remain byte-identical.
+- Real Qwen common-loader parity and temporary three-shard loading matched
+  all 32 reference tokens. The 200-token RSS gate retained 90.2 -> 90.8 ->
+  90.8 MiB, below the unchanged 64 MiB growth limit.
+- Pinned local DeepSeek attention, compressed/shared attention, output/query
+  projection, expert, and quantized-cache checks; the separate quantization
+  suite also passed with the real activation reference enabled.
+- The five core examples, MLP fine-tuning/reload, DeepSeek quantized-cache
+  smoke, and exported float32/Engram bundles through the generation CLI.
+- `go mod tidy -diff` and whitespace checks reported no changes or errors.
 
 Real adapter-loader parity and saved training-checkpoint artifact comparison
-were not enabled for this preparation. Reduced-fixture LoRA/training tests are
-part of the runtime suite. Public CI does not download or run these local
-real-weight fixtures. Existing numerical thresholds are unchanged.
+were not enabled. Performance benchmarks and the unfinished BANKING77 search
+were not rerun. Public CI does not download these local real-weight fixtures.
 
-Updating these files does not publish a tag or GitHub release. The exact
-candidate must pass the complete CI matrix before tagging, then the tag
-workflow reruns that matrix before publication.
+The exact candidate must pass the complete CI matrix before tagging. The tag
+workflow reruns that matrix before publishing the source release. Updating
+these files does not publish a tag or GitHub release.
 
 ## Known Limits
 
-- Sampling uses MLX's global RNG; interleaved random operations can change a
-  seeded sequence. This is not a per-session random generator.
-- Native work remains serialized on one OS thread. Stream callbacks run outside
-  internal batches, but callers must not wrap them in worker code that blocks
-  on another goroutine needing MLX. The default device is process-wide.
-- `LiveArrays` is not a native-memory counter. `Synchronize` neither submits
-  lazy graphs nor waits for unrelated streams; concurrent callers can still
-  affect allocator measurements.
-- Qwen support remains the documented standard BF16 architecture and q/v LoRA,
-  not arbitrary models or QLoRA. DeepSeek remains experimental component and
-  prepared-bundle support, not full released-checkpoint text inference.
-- No DeepSeek module split, weight offloading, or quantized training is added.
+- Device decode is inference-only. Each layer must have wholly float32 or
+  wholly FP4 experts, including its shared expert. Banks remain resident and
+  are released with the model. This does not add released DeepSeek checkpoint
+  support or expert offloading.
+- Saved DeepSeek measurements use untrained synthetic models; saved Qwen
+  training measurements use the documented FP32 workloads. Both were recorded
+  with MLX 0.32.0 and mlx-c 0.6.0_3, not the current release baseline. They are
+  historical measurements, not new performance claims for mlx-c 0.7.
+- The larger Qwen training comparison records strict adapter-value mismatches
+  despite close losses. It is numerical characterization, not a full tensor
+  parity pass. The tiny fixture's acceptance limits are unchanged.
+- BANKING77 results are bounded subset experiments. Constrained labels do not
+  establish task accuracy, and the unfinished full-data search must not be
+  presented as a completed evaluation.
+- Native work remains serialized on one OS thread. Device selection and the
+  sampling RNG remain process-wide. Existing ownership, streaming, and model
+  support limits are described in [compatibility](COMPATIBILITY.md).
 
-The release contains Go source, not native libraries or model weights.
-`THIRD_PARTY_NOTICES.md` records bundled upstream notices; model and native
-dependency licenses apply separately.
+The release contains Go source and small reference fixtures, not native
+libraries, downloaded datasets, or model checkpoints. See
+[third-party notices](THIRD_PARTY_NOTICES.md) for bundled reference material.

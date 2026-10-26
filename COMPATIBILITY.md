@@ -1,13 +1,13 @@
 # Compatibility And Stability
 
-## v0.2.0 Support Boundary
+## v0.3.0 Support Boundary
 
 | Area | Supported or validated boundary |
 | --- | --- |
 | Native hardware | Apple Silicon (`darwin/arm64`), CPU and Metal GPU index 0 |
-| macOS | Documented minimum 14; release validation on macOS 15 in CI and 26.7 locally. macOS 14 is not separately exercised in CI. |
+| macOS | Documented minimum 14; CI targets macOS 15 and local validation uses 27.0.1. macOS 14 is not separately exercised in CI. |
 | Go | Minimum 1.26 from `go.mod`; CI covers the 1.26 and 1.27 lines |
-| Native dependencies | Local tested baseline: MLX 0.32.0, mlx-c 0.6.0_3, Homebrew `/opt/homebrew` |
+| Native dependencies | Requires the mlx-c 0.7 API; local tested baseline: MLX 0.32.4, mlx-c 0.7.0_1, Homebrew `/opt/homebrew` |
 | Build | `CGO_ENABLED=1`, `-tags mlx`; runtime tests additionally need `mlxruntime` |
 | Without MLX | Stub APIs compile and return unavailable errors; this is not CPU emulation. Linux stub builds run in CI. |
 
@@ -19,10 +19,15 @@ for deployment and rerun the runtime suite after upgrades. Other installation
 prefixes, Intel Macs, Linux native execution and additional GPU devices are not
 part of this release's supported configuration.
 
+`CumsumAxis` uses `mlx_cumsum_axis` and its optional dtype argument. Native
+builds against mlx-c 0.6 are no longer supported; upgrade the matching native
+headers and libraries when moving to v0.3.0. Its Go signature and inclusive
+forward behavior are unchanged.
+
 ## API Policy
 
-`v0.2.0` remains pre-1.0. It is not a promise of v1 API stability or production
-suitability for every workload. Within each patch line (such as `v0.2.x`),
+`v0.3.0` remains pre-1.0. It is not a promise of v1 API stability or production
+suitability for every workload. Within each patch line (such as `v0.3.x`),
 the intent is to preserve exported signatures and defaults, documenting
 behavioral corrections and security fixes. Breaking changes target a new
 minor version and must be described in the release notes. Do not move published
@@ -55,10 +60,17 @@ The test suite checks exported native/stub signature parity.
 - DeepSeek sparse execution and prepared packed loading are explicit options.
   Sparse execution is not compatible with autograd or `Compile`, and all expert
   weights remain resident. The prepared loader's byte limit is not an RSS limit.
+- DeepSeek `DeviceDecode` uses sparse dispatch for the initial prompt and
+  device-side expert banks for subsequent tokens. Each layer must have wholly
+  float32 or wholly FP4 experts, including its shared expert. Banks are owned
+  by the model and shared by its sessions; this is an inference-only option.
 - CPU/GPU numerical results may differ. Quantized validation uses documented
   tolerances; component benchmarks are not whole-model throughput claims.
 - Sampling seeds MLX's process-wide RNG. Reproducibility assumes no interleaved
   random operations from other callers; a seed is not per-session isolation.
+- `lm.Choices.Greedy` guarantees an allowed token sequence only on success.
+  It makes greedy token decisions, not a whole-sequence likelihood comparison;
+  label membership does not establish classification accuracy.
 - Stream callbacks run on the caller outside internal batches. Do not wrap
   streaming in a worker callback or `Batch` if the consumer waits for MLX work
   on another goroutine. Callback errors return partial output, not a completion.
@@ -75,7 +87,7 @@ MLX initialization even before selecting CPU.
 
 Real-weight tests are opt-in because model weights are not included in the
 repository. A green public CI run therefore does not mean those tests ran.
-The v0.2.0 validation record is maintained in `RELEASE_NOTES.md`. Historical
+The v0.3.0 validation record is maintained in `RELEASE_NOTES.md`. Historical
 v0.1.0 validation on 2026-09-27 included `make release-check` and the real
 Qwen and DeepSeek sample tests. Later cache validation matched all 32 Qwen
 reference tokens with maximum prefill-logit error 0.03125 (limit 0.25), and
