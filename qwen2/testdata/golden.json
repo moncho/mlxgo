@@ -73,17 +73,17 @@
     323,
     25963,
     39020,
-    304,
-    279,
-    9434,
-    19745,
-    13
+    13,
+    1096,
+    71816,
+    315,
+    3100
   ],
   "cache": "mlx_lm.models.cache.ConcatenateKVCache",
   "max_logit_error": 0.25,
   "minimum_matching_tokens": 32,
   "versions": {
-    "mlx": "0.32.0",
+    "mlx": "0.32.4",
     "mlx-lm": "0.31.3",
     "tokenizers": "0.23.2",
     "transformers": "5.16.1"

@@ -31,8 +31,14 @@ Fixtures were generated with the pinned versions in
 and its built-in `ConcatenateKVCache`. The model uses fused bias projections
 and compiled SwiGLU to match reference bf16 rounding. Different MLX versions,
 kernel choices, or cache layouts can change greedy decisions near tied logits.
-The C++ attention shim supports both mlx-c 0.6.0 and the newer `force_fused`
-signature without a version-dependent function-pointer cast.
+The current fixture pins MLX 0.32.4. Regenerating it with the same checkpoint,
+mlx-lm, tokenizer, and Transformers versions changed the final five reference
+tokens from the MLX 0.32.0 fixture. Independent upstream runs on each runtime
+reproduced its respective sequence; Go matches the 0.32.4 reference. The
+32-token requirement and 0.25 prefill-logit limit are unchanged.
+The C++ attention shim handles the `force_fused` signature without a
+version-dependent function-pointer cast. The package requires mlx-c 0.7 for
+the cumulative-sum binding; the shim alone does not provide 0.6 compatibility.
 
 To deliberately regenerate fixtures on a Metal-capable Mac:
 
